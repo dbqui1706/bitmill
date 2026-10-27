@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgxpool"
 	videoApp "quidb.dev/go-streaming/internal/application/video"
 	"quidb.dev/go-streaming/internal/config"
 	"quidb.dev/go-streaming/internal/infrastructure/repository"
+	"quidb.dev/go-streaming/internal/infrastructure/storage"
 	"quidb.dev/go-streaming/internal/infrastructure/transcoder"
 	deliveryHTTP "quidb.dev/go-streaming/internal/interfaces/http"
 	deliveryRTMP "quidb.dev/go-streaming/internal/interfaces/rtmp"
@@ -23,15 +26,15 @@ func main() {
 	fmt.Println("🚀 KHỞI ĐỘNG BITMILL STREAMING MEDIA SERVER")
 	fmt.Println("==================================================")
 
-	// 1. [Config]: Nạp cấu hình thông qua VIPER
+	// 1. [Config]: Load configuration via Viper
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Error("Không thể load cấu hình qua Viper: %v", err)
+		log.Error("Failed to load configuration: %v", err)
 		os.Exit(1)
 	}
-	log.Info("Đã nạp cấu hình thành công bằng VIPER (HTTP Port: %d, RTMP Port: %d)", cfg.Server.HTTPPort, cfg.Server.RTMPPort)
+	log.Info("Configuration loaded successfully (HTTP Port: %d, RTMP Port: %d)", cfg.Server.HTTPPort, cfg.Server.RTMPPort)
 
-	// Chuẩn hóa đường dẫn
+	// Normalize storage directories
 	rootDir, err := filepath.Abs(cfg.Storage.RootDir)
 	if err != nil {
 		rootDir = "."
@@ -42,8 +45,37 @@ func main() {
 	}
 	_ = os.MkdirAll(hlsDir, 0755)
 
-	// 2. [Infrastructure Layer]
-	repo := repository.NewMemoryRepo()
+	// 2. [Database Connection Pool (PostgreSQL)]
+	ctx := context.Background()
+	pgPool, err := pgxpool.New(ctx, cfg.Database.DSN())
+	if err != nil {
+		log.Error("Failed to connect to PostgreSQL: %v", err)
+		os.Exit(1)
+	}
+	defer pgPool.Close()
+
+	if err := pgPool.Ping(ctx); err != nil {
+		log.Error("PostgreSQL ping failed: %v", err)
+		os.Exit(1)
+	}
+	log.Info("Connected to PostgreSQL successfully at %s:%d (DB: %s)", cfg.Database.Host, cfg.Database.Port, cfg.Database.DBName)
+
+	// 3. [Storage Provider (Cloudflare R2 Adapter)]
+	r2Adapter, err := storage.NewR2Adapter(
+		ctx,
+		cfg.Storage.R2.AccountID,
+		cfg.Storage.R2.AccessKeyID,
+		cfg.Storage.R2.SecretAccessKey,
+		cfg.Storage.R2.PublicDomain,
+	)
+	if err != nil {
+		log.Error("Failed to initialize Cloudflare R2 Adapter: %v", err)
+		os.Exit(1)
+	}
+	log.Info("Cloudflare R2 Adapter initialized successfully (Bucket: %s)", cfg.Storage.R2.RawBucket)
+
+	// 4. [Repositories]
+	pgRepo := repository.NewPostgresRepo(pgPool)
 	ffmpegTranscoder := transcoder.NewDockerFFmpegTranscoder(
 		rootDir,
 		cfg.Transcoder.DockerImage,
@@ -51,35 +83,41 @@ func main() {
 		cfg.Transcoder.HLSSegmentDuration,
 	)
 
-	// 3. [Application Layer]
-	service := videoApp.NewService(repo, ffmpegTranscoder, hlsDir, cfg.Server.BaseURL, log)
+	// 5. [Application Services]
+	legacyService := videoApp.NewService(pgRepo, ffmpegTranscoder, hlsDir, cfg.Server.BaseURL, log)
+	uploadService := videoApp.NewUploadService(pgRepo, pgRepo, r2Adapter, cfg.Storage.R2.RawBucket, 2*time.Hour, log)
 
-	// Tự động quét nạp video có sẵn trong repo (video.mp4, sample.mp4)
-	registerAvailableVideos(service, rootDir, log)
+	// Scan available test videos
+	registerAvailableVideos(legacyService, rootDir, log)
 
-	// 4. [Interfaces Layer - RTMP Ingest Cổng 1935]
+	// 6. [Interfaces Layer - RTMP Ingest Port 1935]
 	rtmpAddr := fmt.Sprintf(":%d", cfg.Server.RTMPPort)
 	rtmpServer := deliveryRTMP.NewServer(rtmpAddr, log)
 	go func() {
 		if err := rtmpServer.Start(); err != nil {
-			log.Error("Lỗi khởi động RTMP Server: %v", err)
+			log.Error("RTMP Server error: %v", err)
 		}
 	}()
 
-	// 5. [Interfaces Layer - HTTP GIN Engine Cổng 8080]
+	// 7. [Interfaces Layer - HTTP Gin Engine Port 8080]
 	gin.SetMode(gin.DebugMode)
 	router := gin.Default()
 
-	httpHandler := deliveryHTTP.NewHandler(service, hlsDir, log)
-	httpHandler.RegisterRoutes(router)
+	// Register Handlers
+	legacyHandler := deliveryHTTP.NewHandler(legacyService, hlsDir, log)
+	legacyHandler.RegisterRoutes(router)
+
+	uploadHandler := deliveryHTTP.NewUploadHandler(uploadService, log)
+	uploadHandler.RegisterRoutes(router)
 
 	httpAddr := fmt.Sprintf(":%d", cfg.Server.HTTPPort)
-	log.Info("HTTP Gin Server đang lắng nghe tại: %s%s", cfg.Server.BaseURL, httpAddr)
-	log.Info("👉 Mở trình duyệt truy cập: %s để quản lý và xem video!", cfg.Server.BaseURL)
+	log.Info("HTTP Gin Server listening on: %s%s", cfg.Server.BaseURL, httpAddr)
+	log.Info("👉 Web player dashboard: %s", cfg.Server.BaseURL)
+	log.Info("👉 Upload API v1: %s/api/v1/videos/upload-session", cfg.Server.BaseURL)
 	fmt.Println("--------------------------------------------------")
 
 	if err := router.Run(httpAddr); err != nil {
-		log.Error("Lỗi chạy Gin Server: %v", err)
+		log.Error("Gin Server error: %v", err)
 	}
 }
 
@@ -97,7 +135,7 @@ func registerAvailableVideos(svc *videoApp.Service, rootDir string, log *logger.
 		fullPath := filepath.Join(rootDir, c.filename)
 		if _, err := os.Stat(fullPath); err == nil {
 			_, _ = svc.RegisterVideo(context.Background(), c.id, c.title, fullPath)
-			log.Info("Tự động nạp video có sẵn: '%s' (Path: %s)", c.title, fullPath)
+			log.Info("Auto-registered existing video: '%s' (Path: %s)", c.title, fullPath)
 		}
 	}
 }
