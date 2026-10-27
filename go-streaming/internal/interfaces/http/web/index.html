@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Bitmill Streaming Media Server</title>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 2rem; }
+    .container { max-width: 900px; margin: 0 auto; }
+    h1 { color: #38bdf8; font-size: 1.8rem; margin-bottom: 0.5rem; }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+    button { background: #0284c7; color: white; border: none; padding: 0.6rem 1.2rem; border-radius: 6px; cursor: pointer; font-weight: 600; }
+    button:hover { background: #0369a1; }
+    .badge { padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8rem; font-weight: bold; }
+    .badge-READY { background: #166534; color: #4ade80; }
+    .badge-PROCESSING { background: #854d0e; color: #facc15; }
+    .badge-PENDING { background: #475569; color: #cbd5e1; }
+    .badge-FAILED { background: #991b1b; color: #f87171; }
+    video { width: 100%; border-radius: 8px; margin-top: 1rem; background: black; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🚀 Bitmill Media Server (DDD Architecture)</h1>
+    <p style="color: #94a3b8;">Hệ thống VOD & Live Ingest: Đăng ký video, cắt HLS ngầm và phát trực tuyến.</p>
+
+    <div class="card">
+      <h3>Danh sách Video trong hệ thống</h3>
+      <div id="video-list">Đang tải...</div>
+    </div>
+
+    <div class="card" id="player-card" style="display: none;">
+      <h3 id="now-playing-title">Đang phát: ...</h3>
+      <video id="video-player" controls autoplay></video>
+    </div>
+  </div>
+
+  <script>
+    async function loadVideos() {
+      const res = await fetch('/api/videos');
+      const responseBody = await res.json();
+      const videos = responseBody.data || [];
+      const listDiv = document.getElementById('video-list');
+      if (videos.length === 0) {
+        listDiv.innerHTML = '<p>Chưa có video nào trong hệ thống.</p>';
+        return;
+      }
+      listDiv.innerHTML = videos.map(function(v) {
+        var actionBtn = '';
+        if (v.status === 'PENDING') {
+          actionBtn = '<button onclick="processVideo(\'' + v.id + '\')">⚙️ Cắt HLS</button>';
+        } else if (v.status === 'READY') {
+          actionBtn = '<button onclick="playHLS(\'' + v.hls_url + '\', \'' + v.title + '\')">▶️ Xem ngay</button>';
+        } else if (v.status === 'PROCESSING') {
+          actionBtn = '<span style="color: #facc15;">⏳ Đang cắt...</span>';
+        } else if (v.status === 'FAILED') {
+          actionBtn = '<span style="color: #f87171;">❌ Thất bại</span>';
+        }
+
+        return '<div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding: 0.75rem 0;">' +
+          '<div>' +
+            '<strong>' + v.title + '</strong> (ID: <code>' + v.id + '</code>)<br>' +
+            '<small style="color: #94a3b8;">File gốc: ' + v.source_path + '</small> ' +
+            '<span class="badge badge-' + v.status + '">' + v.status + '</span>' +
+          '</div>' +
+          '<div>' + actionBtn + '</div>' +
+        '</div>';
+      }).join('');
+    }
+
+    async function processVideo(id) {
+      await fetch('/api/videos/' + id + '/process', { method: 'POST' });
+      alert('Đã gửi lệnh cắt video sang HLS! Hệ thống đang xử lý trong nền...');
+      setTimeout(loadVideos, 1000);
+    }
+
+    function playHLS(url, title) {
+      document.getElementById('player-card').style.display = 'block';
+      document.getElementById('now-playing-title').innerText = 'Đang phát: ' + title;
+      const video = document.getElementById('video-player');
+      if (Hls.isSupported()) {
+        const hls = new Hls();
+        hls.loadSource(url);
+        hls.attachMedia(video);
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = url;
+      }
+    }
+
+    loadVideos();
+    setInterval(loadVideos, 3000); // Tự động cập nhật trạng thái
+  </script>
+</body>
+</html>

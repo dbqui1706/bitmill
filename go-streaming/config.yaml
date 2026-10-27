@@ -1,0 +1,36 @@
+server:
+  http_port: 8080
+  rtmp_port: 1935
+  base_url: "http://localhost:8080"
+
+storage:
+  root_dir: ".."
+  hls_dir: "../hls_storage"
+  r2:
+    account_id: ""
+    access_key_id: ""
+    secret_access_key: ""
+    raw_bucket: "bitmill-raw-videos"
+    processed_bucket: "bitmill-processed-videos"
+    public_domain: ""
+
+database:
+  host: "localhost"
+  port: 5432
+  user: "bitmill_user"
+  password: "bitmill_password"
+  dbname: "bitmill_media"
+  sslmode: "disable"
+
+rabbitmq:
+  uri: "amqp://bitmill_mq:bitmill_mq_password@localhost:5672/"
+  exchange: "bitmill.video.events"
+  queue: "video.transcoding.jobs"
+  routing_key: "video.transcode.job"
+  dlx: "bitmill.video.dlx"
+  dlq: "video.transcoding.dlq"
+
+transcoder:
+  docker_image: "mwader/static-ffmpeg:latest"
+  gop_size: 60
+  hls_segment_duration: 4

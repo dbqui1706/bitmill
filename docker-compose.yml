@@ -1,0 +1,45 @@
+services:
+  # 1. PostgreSQL 15+ (Relational Metadata Database - RMDS)
+  postgres:
+    image: postgres:15-alpine
+    container_name: bitmill-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-bitmill_media}
+      POSTGRES_USER: ${POSTGRES_USER:-bitmill_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bitmill_password}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bitmill_user} -d ${POSTGRES_DB:-bitmill_media}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 2. RabbitMQ with Management Web UI & Dead Letter Queue Support
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: bitmill-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-bitmill_mq}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-bitmill_mq_password}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"     # AMQP Protocol
+      - "15672:15672"                     # Management Web Dashboard
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+    driver: local
+  rabbitmq_data:
+    driver: local

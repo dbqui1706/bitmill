@@ -1,0 +1,40 @@
+# Environment variables (Sensitive secrets)
+.env
+.env.local
+.env.*.local
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Go build outputs & binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go-streaming/bin/
+
+# Media and cache directories
+hls_storage/
+uploads/
+tmp/
+*.mp4
+!sample.mp4
+
+# Docker volumes
+docker-volumes/

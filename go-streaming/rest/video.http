@@ -1,0 +1,24 @@
+### 1. Lấy danh sách video trong hệ thống
+GET http://localhost:8080/api/videos
+Accept: application/json
+
+### 2. Đăng ký một video mới vào hệ thống
+POST http://localhost:8080/api/videos
+Content-Type: application/json
+
+{
+  "id": "my-video",
+  "title": "Video Demo Mới",
+  "source_path": "../video.mp4"
+}
+
+### 3. Xem thông tin chi tiết một video
+GET http://localhost:8080/api/videos/video-1
+Accept: application/json
+
+### 4. Bật lệnh cắt HLS cho video
+POST http://localhost:8080/api/videos/video-1/process
+Content-Type: application/json
+
+### 5. Truy cập file playlist HLS trực tiếp
+GET http://localhost:8080/hls/video-1/stream.m3u8
