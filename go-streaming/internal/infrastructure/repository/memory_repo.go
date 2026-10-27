@@ -45,3 +45,29 @@ func (r *MemoryRepo) List(ctx context.Context) ([]*video.Video, error) {
 	}
 	return res, nil
 }
+
+func (r *MemoryRepo) UpdateStatus(ctx context.Context, id string, status video.Status) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	v, exists := r.videos[id]
+	if !exists {
+		return video.ErrVideoNotFound
+	}
+	v.Status = status
+	return nil
+}
+
+func (r *MemoryRepo) UpdateStatusIf(ctx context.Context, id string, newStatus video.Status, currentStatus video.Status) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	v, exists := r.videos[id]
+	if !exists {
+		return false, video.ErrVideoNotFound
+	}
+	if v.Status == currentStatus {
+		v.Status = newStatus
+		return true, nil
+	}
+	return false, nil
+}
+
