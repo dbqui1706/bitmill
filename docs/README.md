@@ -1,47 +1,41 @@
 # 📚 Bitmill Engineering Documentation Hub
 
-Welcome to the technical documentation repository for the **Bitmill** media streaming and VOD platform. The `docs/` folder is structured according to enterprise standards for distributed media architectures.
+Welcome to the technical documentation repository for the **Bitmill** media streaming and VOD platform. The documentation is organized according to the **Lean 3-Pillar Architecture**.
 
 ---
 
-## 🗂️ Documentation Hierarchy (`docs/`)
+## 🗂️ The 3-Pillar Documentation Hierarchy
 
 ```
 docs/
-├── README.md                          # [Root] Central navigation index and technical overview
-├── requirements/                      # Functional (FR) & Non-Functional Requirements (NFR)
-│   └── upload-service-spec.md         # INVEST User Stories, Acceptance Criteria (BDD/Gherkin), Invariants
-├── analysis-design/                   # Business domain analysis, data models, and schemas
-│   ├── database-schema.md             # Relational Database Schema (RMDS / PostgreSQL), ERD & DDL
-│   └── upload-service-decisions.md    # Architecture Decision Records (ADRs: R2, Event Ingest, ABR, RabbitMQ)
-├── architecture/                      # System topology, sequence diagrams, and service specs
-│   └── upload-service-architecture.md # Video Upload & Processing Pipeline architectural specification
-├── development/                       # Engineering guidelines, tech stack, and task work breakdown
-│   └── upload-service-task.md         # Source tree layout, tech stack matrix, and task file mapping
-├── security/                          # AuthN/AuthZ, Presigned URL policies, and storage security
-├── operations/                        # Docker, Kubernetes, CI/CD, and Observability
-└── project-tracking/                  # Roadmap, sprint deliverables, and backlog
+├── README.md              # [Root] Central navigation index and system overview
+│
+├── rfcs/                  # [PILLAR 1: HISTORICAL DECISIONS & DISCOVERY (Immutable)]
+│   ├── discovery/         # Multi-perspective discovery reports (BA/UX, Architect, SecOps)
+│   │   ├── 01-ba-ux-analysis.md
+│   │   ├── 02-solutions-architecture.md
+│   │   └── 03-secops-chaos-analysis.md
+│   └── 001-resumable-video-upload.md  # RFC-001: Resumable & Fault-Tolerant Ingestion Engine
+│
+├── architecture/          # [PILLAR 2: CURRENT STATE & SINGLE SOURCE OF TRUTH (Living Docs)]
+│   ├── system-overview.md # System topology, sequence diagrams, and pipeline design
+│   ├── database-schema.md # Complete PostgreSQL ERD, DDL, indexes, and triggers
+│   └── api-contracts.md   # Active REST API specifications, request/response envelopes
+│
+└── operations/            # [PILLAR 3: OPERATIONS & RUNBOOKS]
+    ├── local-setup.md     # Local development setup, Docker, environment variables, Makefile
+    └── runbook.md         # Troubleshooting playbooks, DLQ remediation, R2 storage cleanup
 ```
 
 ---
 
 ## 📑 Core Documentation Index
 
-| Document | Classification | Key Coverage |
+| Pillar | Document | Focus Area |
 | :--- | :--- | :--- |
-| [upload-service-spec.md](file:///Users/quidb/Working/projects/bitmill/docs/requirements/upload-service-spec.md) | **Requirements (BA)** | INVEST User Stories, Gherkin BDD specs, domain invariants, and actor permissions. |
-| [upload-service-decisions.md](file:///Users/quidb/Working/projects/bitmill/docs/analysis-design/upload-service-decisions.md) | **Decisions (ADR)** | ADRs: Cloudflare R2 (Zero Egress), Event-driven Ingestion, Multi-bitrate ABR HLS, RabbitMQ & DLQ. |
-| [upload-service-architecture.md](file:///Users/quidb/Working/projects/bitmill/docs/architecture/upload-service-architecture.md) | **Architecture** | Architectural spec derived from `upload-service.drawio`: Direct R2 Upload, Presigned URLs, Queue, DLQ, Worker Pool, and CDN. |
-| [database-schema.md](file:///Users/quidb/Working/projects/bitmill/docs/analysis-design/database-schema.md) | **Analysis & Design** | RMDS (PostgreSQL) schema: ER diagrams, state machines, and DDL for `videos`, `video_renditions`, and `processing_jobs`. |
-| [upload-service-task.md](file:///Users/quidb/Working/projects/bitmill/docs/development/upload-service-task.md) | **Development** | Complete Go codebase map, active tech stack, Clean Architecture rules, and task-specific file inventory. |
-| [AI_WORKFLOW.md](file:///Users/quidb/Working/projects/bitmill/AI_WORKFLOW.md) | **Repository Root** | Engineering workflow principles: Deep understanding first, DDD Clean Architecture, and Docker FFmpeg standards. |
-| [architecture.md](file:///Users/quidb/Working/projects/bitmill/architecture.md) | **Repository Root** | High-level C4 model architecture of the complete Bitmill system (RTMP, HLS, Chat, VOD). |
-| [requirements.md](file:///Users/quidb/Working/projects/bitmill/requirements.md) | **Repository Root** | Functional and non-functional requirements specification. |
-
----
-
-## 🎯 Architectural Goals for the Video Upload Subsystem
-1. **Zero-Server Ingest Bottleneck**: Multi-gigabyte raw video payloads bypass the API server entirely via secure, time-limited Presigned PUT URLs directly to Object Storage (S3 / MinIO).
-2. **Decoupled Asynchronous Processing**: CPU-intensive video decoding, scaling, and Adaptive Bitrate (ABR) HLS packaging are offloaded to dedicated worker pools via Message Queues.
-3. **Resilience & Fault Tolerance**: Integration with Dead Letter Queues (DLQ) ensures malformed media and runtime crashes are captured with contextual telemetry without starving other tasks.
-4. **Clean Architecture & DDD**: Strict layer separation within Golang (`domain`, `application`, `infrastructure`, `interfaces`).
+| **Pillar 1: RFCs** | [RFC-001](file:///Users/quidb/Working/projects/bitmill/docs/rfcs/001-resumable-video-upload.md) | Architectural decision record for Resumable Direct-to-R2 S3 Multipart Upload. |
+| **Pillar 2: Architecture** | [system-overview.md](file:///Users/quidb/Working/projects/bitmill/docs/architecture/system-overview.md) | High-level system architecture, ABR HLS ladder, and RabbitMQ event pipeline. |
+| **Pillar 2: Architecture** | [database-schema.md](file:///Users/quidb/Working/projects/bitmill/docs/architecture/database-schema.md) | Relational database schema (PostgreSQL 15+), ERD, table DDL, and triggers. |
+| **Pillar 2: Architecture** | [api-contracts.md](file:///Users/quidb/Working/projects/bitmill/docs/architecture/api-contracts.md) | REST API v1 contracts under `/api/v1/videos` with JSON request/response schemas. |
+| **Pillar 3: Operations** | [local-setup.md](file:///Users/quidb/Working/projects/bitmill/docs/operations/local-setup.md) | Local development setup, environment variables, and `make` automation targets. |
+| **Pillar 3: Operations** | [runbook.md](file:///Users/quidb/Working/projects/bitmill/docs/operations/runbook.md) | Incident diagnosis, DLQ inspection, Cloudflare R2 orphan cleanup, and database queries. |

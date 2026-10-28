@@ -42,3 +42,9 @@ docker-volumes/
 # Git Worktrees
 .worktrees/
 
+# Application Logs
+*.log
+logs/*.log
+go-streaming/logs/*.log
+
+

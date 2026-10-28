@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"quidb.dev/go-streaming/internal/domain/video"
+	"quidb.dev/go-streaming/internal/infrastructure/repository/sqlc"
 )
 
 var (
@@ -17,319 +20,323 @@ var (
 )
 
 type PostgresRepo struct {
-	pool *pgxpool.Pool
+	pool    *pgxpool.Pool
+	queries *sqlc.Queries
 }
 
 func NewPostgresRepo(pool *pgxpool.Pool) *PostgresRepo {
-	return &PostgresRepo{pool: pool}
+	return &PostgresRepo{
+		pool:    pool,
+		queries: sqlc.New(pool),
+	}
 }
 
 // ---------------------------------------------------------
-// video.Repository Implementation
+// Helper Conversion Functions (UUID & Numeric)
+// ---------------------------------------------------------
+
+func toPgUUID(s string) pgtype.UUID {
+	parsed, err := uuid.Parse(s)
+	if err != nil {
+		return pgtype.UUID{Valid: false}
+	}
+	return pgtype.UUID{Bytes: parsed, Valid: true}
+}
+
+func fromPgUUID(u pgtype.UUID) string {
+	if !u.Valid {
+		return ""
+	}
+	return uuid.UUID(u.Bytes).String()
+}
+
+func toPgText(s string) pgtype.Text {
+	return pgtype.Text{String: s, Valid: s != ""}
+}
+
+func fromPgText(t pgtype.Text) string {
+	if !t.Valid {
+		return ""
+	}
+	return t.String
+}
+
+func toPgNumeric(f float64) pgtype.Numeric {
+	var n pgtype.Numeric
+	_ = n.Scan(fmt.Sprintf("%.2f", f))
+	return n
+}
+
+func fromPgNumeric(n pgtype.Numeric) float64 {
+	val, err := n.Float64Value()
+	if err != nil || !val.Valid {
+		return 0.0
+	}
+	return val.Float64
+}
+
+func toPgTimestamptz(t time.Time) pgtype.Timestamptz {
+	if t.IsZero() {
+		return pgtype.Timestamptz{Valid: false}
+	}
+	return pgtype.Timestamptz{Time: t, Valid: true}
+}
+
+// ---------------------------------------------------------
+// video.Repository Implementation via SQLC
 // ---------------------------------------------------------
 
 func (r *PostgresRepo) Save(ctx context.Context, v *video.Video) error {
-	query := `
-		INSERT INTO videos (
-			id, user_id, title, description, raw_bucket, raw_object_key,
-			raw_size_bytes, mime_type, status, duration_seconds,
-			master_playlist_url, thumbnail_url, created_at, updated_at
-		) VALUES (
-			$1, $2, $3, $4, $5, $6,
-			$7, $8, $9, $10,
-			$11, $12, $13, $14
-		)
-		ON CONFLICT (id) DO UPDATE SET
-			title = EXCLUDED.title,
-			description = EXCLUDED.description,
-			raw_size_bytes = EXCLUDED.raw_size_bytes,
-			status = EXCLUDED.status,
-			duration_seconds = EXCLUDED.duration_seconds,
-			master_playlist_url = EXCLUDED.master_playlist_url,
-			thumbnail_url = EXCLUDED.thumbnail_url,
-			updated_at = NOW();
-	`
+	params := sqlc.CreateOrUpdateVideoParams{
+		ID:                toPgUUID(v.ID),
+		UserID:            toPgUUID(v.UserID),
+		Title:             v.Title,
+		Description:       toPgText(v.Description),
+		RawBucket:         v.RawBucket,
+		RawObjectKey:      v.RawObjectKey,
+		RawSizeBytes:      v.RawSizeBytes,
+		MimeType:          v.MimeType,
+		Status:            sqlc.VideoStatus(v.Status),
+		DurationSeconds:   toPgNumeric(v.DurationSeconds),
+		MasterPlaylistUrl: toPgText(v.MasterPlaylistURL),
+		ThumbnailUrl:      toPgText(v.ThumbnailURL),
+		CreatedAt:         toPgTimestamptz(v.CreatedAt),
+		UpdatedAt:         toPgTimestamptz(v.UpdatedAt),
+	}
 
-	_, err := r.pool.Exec(ctx, query,
-		v.ID, v.UserID, v.Title, v.Description, v.RawBucket, v.RawObjectKey,
-		v.RawSizeBytes, v.MimeType, string(v.Status), v.DurationSeconds,
-		v.MasterPlaylistURL, v.ThumbnailURL, v.CreatedAt, v.UpdatedAt,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to save video: %w", err)
+	if err := r.queries.CreateOrUpdateVideo(ctx, params); err != nil {
+		return fmt.Errorf("failed to save video via sqlc: %w", err)
 	}
 
 	return nil
 }
 
 func (r *PostgresRepo) FindByID(ctx context.Context, id string) (*video.Video, error) {
-	query := `
-		SELECT 
-			id, user_id, title, description, raw_bucket, raw_object_key,
-			raw_size_bytes, mime_type, status, duration_seconds,
-			master_playlist_url, thumbnail_url, created_at, updated_at
-		FROM videos
-		WHERE id = $1;
-	`
-
-	row := r.pool.QueryRow(ctx, query, id)
-
-	var v video.Video
-	var statusStr string
-	err := row.Scan(
-		&v.ID, &v.UserID, &v.Title, &v.Description, &v.RawBucket, &v.RawObjectKey,
-		&v.RawSizeBytes, &v.MimeType, &statusStr, &v.DurationSeconds,
-		&v.MasterPlaylistURL, &v.ThumbnailURL, &v.CreatedAt, &v.UpdatedAt,
-	)
+	row, err := r.queries.GetVideoByID(ctx, toPgUUID(id))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, errors.New("video not found")
 		}
-		return nil, fmt.Errorf("failed to query video by id: %w", err)
+		return nil, fmt.Errorf("failed to query video by id via sqlc: %w", err)
 	}
 
-	v.Status = video.Status(statusStr)
-	return &v, nil
+	return &video.Video{
+		ID:                fromPgUUID(row.ID),
+		UserID:            fromPgUUID(row.UserID),
+		Title:             row.Title,
+		Description:       fromPgText(row.Description),
+		RawBucket:         row.RawBucket,
+		RawObjectKey:      row.RawObjectKey,
+		RawSizeBytes:      row.RawSizeBytes,
+		MimeType:          row.MimeType,
+		Status:            video.Status(row.Status),
+		DurationSeconds:   fromPgNumeric(row.DurationSeconds),
+		MasterPlaylistURL: fromPgText(row.MasterPlaylistUrl),
+		ThumbnailURL:      fromPgText(row.ThumbnailUrl),
+		CreatedAt:         row.CreatedAt.Time,
+		UpdatedAt:         row.UpdatedAt.Time,
+	}, nil
 }
 
 func (r *PostgresRepo) List(ctx context.Context) ([]*video.Video, error) {
-	query := `
-		SELECT 
-			id, user_id, title, description, raw_bucket, raw_object_key,
-			raw_size_bytes, mime_type, status, duration_seconds,
-			master_playlist_url, thumbnail_url, created_at, updated_at
-		FROM videos
-		ORDER BY created_at DESC;
-	`
-
-	rows, err := r.pool.Query(ctx, query)
+	rows, err := r.queries.ListVideos(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list videos: %w", err)
+		return nil, fmt.Errorf("failed to list videos via sqlc: %w", err)
 	}
-	defer rows.Close()
 
-	var result []*video.Video
-	for rows.Next() {
-		var v video.Video
-		var statusStr string
-		err := rows.Scan(
-			&v.ID, &v.UserID, &v.Title, &v.Description, &v.RawBucket, &v.RawObjectKey,
-			&v.RawSizeBytes, &v.MimeType, &statusStr, &v.DurationSeconds,
-			&v.MasterPlaylistURL, &v.ThumbnailURL, &v.CreatedAt, &v.UpdatedAt,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan video row: %w", err)
-		}
-		v.Status = video.Status(statusStr)
-		result = append(result, &v)
+	result := make([]*video.Video, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, &video.Video{
+			ID:                fromPgUUID(row.ID),
+			UserID:            fromPgUUID(row.UserID),
+			Title:             row.Title,
+			Description:       fromPgText(row.Description),
+			RawBucket:         row.RawBucket,
+			RawObjectKey:      row.RawObjectKey,
+			RawSizeBytes:      row.RawSizeBytes,
+			MimeType:          row.MimeType,
+			Status:            video.Status(row.Status),
+			DurationSeconds:   fromPgNumeric(row.DurationSeconds),
+			MasterPlaylistURL: fromPgText(row.MasterPlaylistUrl),
+			ThumbnailURL:      fromPgText(row.ThumbnailUrl),
+			CreatedAt:         row.CreatedAt.Time,
+			UpdatedAt:         row.UpdatedAt.Time,
+		})
 	}
 
 	return result, nil
 }
 
 func (r *PostgresRepo) UpdateStatus(ctx context.Context, id string, status video.Status) error {
-	query := `UPDATE videos SET status = $1, updated_at = NOW() WHERE id = $2;`
-	_, err := r.pool.Exec(ctx, query, string(status), id)
-	if err != nil {
-		return fmt.Errorf("failed to update video status: %w", err)
+	params := sqlc.UpdateVideoStatusParams{
+		Status: sqlc.VideoStatus(status),
+		ID:     toPgUUID(id),
+	}
+	if err := r.queries.UpdateVideoStatus(ctx, params); err != nil {
+		return fmt.Errorf("failed to update video status via sqlc: %w", err)
 	}
 	return nil
 }
 
 func (r *PostgresRepo) UpdateStatusIf(ctx context.Context, id string, newStatus video.Status, currentStatus video.Status) (bool, error) {
-	query := `
-		UPDATE videos 
-		SET status = $1, updated_at = NOW() 
-		WHERE id = $2 AND status = $3;
-	`
-	tag, err := r.pool.Exec(ctx, query, string(newStatus), id, string(currentStatus))
-	if err != nil {
-		return false, fmt.Errorf("failed to update video status conditionally: %w", err)
+	params := sqlc.UpdateVideoStatusIfParams{
+		Status:   sqlc.VideoStatus(newStatus),
+		ID:       toPgUUID(id),
+		Status_2: sqlc.VideoStatus(currentStatus),
 	}
-	return tag.RowsAffected() > 0, nil
+	rowsAffected, err := r.queries.UpdateVideoStatusIf(ctx, params)
+	if err != nil {
+		return false, fmt.Errorf("failed to update video status conditionally via sqlc: %w", err)
+	}
+	return rowsAffected > 0, nil
 }
 
 // ---------------------------------------------------------
-// video.UploadSessionRepository Implementation
+// video.UploadSessionRepository Implementation via SQLC
 // ---------------------------------------------------------
 
 func (r *PostgresRepo) SaveSession(ctx context.Context, session *video.UploadSession) error {
-	query := `
-		INSERT INTO upload_sessions (
-			id, video_id, upload_id, storage_bucket, storage_key,
-			file_fingerprint, total_size_bytes, part_size_bytes, total_parts,
-			status, expires_at, created_at, updated_at
-		) VALUES (
-			$1, $2, $3, $4, $5,
-			$6, $7, $8, $9,
-			$10, $11, $12, $13
-		)
-		ON CONFLICT (id) DO UPDATE SET
-			status = EXCLUDED.status,
-			updated_at = NOW();
-	`
+	params := sqlc.CreateOrUpdateUploadSessionParams{
+		ID:               toPgUUID(session.ID),
+		VideoID:          toPgUUID(session.VideoID),
+		UploadID:         session.UploadID,
+		StorageBucket:    session.StorageBucket,
+		StorageKey:       session.StorageKey,
+		FileFingerprint:  toPgText(session.FileFingerprint),
+		TotalSizeBytes:   session.TotalSizeBytes,
+		PartSizeBytes:    session.PartSizeBytes,
+		TotalParts:       int32(session.TotalParts),
+		Status:           string(session.Status),
+		ExpiresAt:        toPgTimestamptz(session.ExpiresAt),
+		CreatedAt:        toPgTimestamptz(session.CreatedAt),
+		UpdatedAt:        toPgTimestamptz(session.UpdatedAt),
+	}
 
-	_, err := r.pool.Exec(ctx, query,
-		session.ID, session.VideoID, session.UploadID, session.StorageBucket, session.StorageKey,
-		session.FileFingerprint, session.TotalSizeBytes, session.PartSizeBytes, session.TotalParts,
-		string(session.Status), session.ExpiresAt, session.CreatedAt, session.UpdatedAt,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to save upload session: %w", err)
+	if err := r.queries.CreateOrUpdateUploadSession(ctx, params); err != nil {
+		return fmt.Errorf("failed to save upload session via sqlc: %w", err)
 	}
 
 	return nil
 }
 
 func (r *PostgresRepo) GetSessionByVideoID(ctx context.Context, videoID string) (*video.UploadSession, error) {
-	query := `
-		SELECT 
-			id, video_id, upload_id, storage_bucket, storage_key,
-			file_fingerprint, total_size_bytes, part_size_bytes, total_parts,
-			status, expires_at, created_at, updated_at
-		FROM upload_sessions
-		WHERE video_id = $1
-		ORDER BY created_at DESC
-		LIMIT 1;
-	`
-
-	row := r.pool.QueryRow(ctx, query, videoID)
-
-	var s video.UploadSession
-	var statusStr string
-	err := row.Scan(
-		&s.ID, &s.VideoID, &s.UploadID, &s.StorageBucket, &s.StorageKey,
-		&s.FileFingerprint, &s.TotalSizeBytes, &s.PartSizeBytes, &s.TotalParts,
-		&statusStr, &s.ExpiresAt, &s.CreatedAt, &s.UpdatedAt,
-	)
+	row, err := r.queries.GetUploadSessionByVideoID(ctx, toPgUUID(videoID))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, errors.New("upload session not found")
 		}
-		return nil, fmt.Errorf("failed to query upload session by video id: %w", err)
+		return nil, fmt.Errorf("failed to query upload session by video id via sqlc: %w", err)
 	}
 
-	s.Status = video.UploadSessionStatus(statusStr)
-	return &s, nil
+	return &video.UploadSession{
+		ID:              fromPgUUID(row.ID),
+		VideoID:         fromPgUUID(row.VideoID),
+		UploadID:        row.UploadID,
+		StorageBucket:   row.StorageBucket,
+		StorageKey:      row.StorageKey,
+		FileFingerprint: fromPgText(row.FileFingerprint),
+		TotalSizeBytes:  row.TotalSizeBytes,
+		PartSizeBytes:   row.PartSizeBytes,
+		TotalParts:      int(row.TotalParts),
+		Status:          video.UploadSessionStatus(row.Status),
+		ExpiresAt:       row.ExpiresAt.Time,
+		CreatedAt:       row.CreatedAt.Time,
+		UpdatedAt:       row.UpdatedAt.Time,
+	}, nil
 }
 
 func (r *PostgresRepo) GetSessionByFingerprint(ctx context.Context, fingerprint string) (*video.UploadSession, error) {
-	query := `
-		SELECT 
-			id, video_id, upload_id, storage_bucket, storage_key,
-			file_fingerprint, total_size_bytes, part_size_bytes, total_parts,
-			status, expires_at, created_at, updated_at
-		FROM upload_sessions
-		WHERE file_fingerprint = $1 AND status = 'UPLOADING' AND expires_at > NOW()
-		ORDER BY created_at DESC
-		LIMIT 1;
-	`
-
-	row := r.pool.QueryRow(ctx, query, fingerprint)
-
-	var s video.UploadSession
-	var statusStr string
-	err := row.Scan(
-		&s.ID, &s.VideoID, &s.UploadID, &s.StorageBucket, &s.StorageKey,
-		&s.FileFingerprint, &s.TotalSizeBytes, &s.PartSizeBytes, &s.TotalParts,
-		&statusStr, &s.ExpiresAt, &s.CreatedAt, &s.UpdatedAt,
-	)
+	row, err := r.queries.GetActiveUploadSessionByFingerprint(ctx, toPgText(fingerprint))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, nil // No active session
+			return nil, nil // No active session found
 		}
-		return nil, fmt.Errorf("failed to query upload session by fingerprint: %w", err)
+		return nil, fmt.Errorf("failed to query active session by fingerprint via sqlc: %w", err)
 	}
 
-	s.Status = video.UploadSessionStatus(statusStr)
-	return &s, nil
+	return &video.UploadSession{
+		ID:              fromPgUUID(row.ID),
+		VideoID:         fromPgUUID(row.VideoID),
+		UploadID:        row.UploadID,
+		StorageBucket:   row.StorageBucket,
+		StorageKey:      row.StorageKey,
+		FileFingerprint: fromPgText(row.FileFingerprint),
+		TotalSizeBytes:  row.TotalSizeBytes,
+		PartSizeBytes:   row.PartSizeBytes,
+		TotalParts:      int(row.TotalParts),
+		Status:          video.UploadSessionStatus(row.Status),
+		ExpiresAt:       row.ExpiresAt.Time,
+		CreatedAt:       row.CreatedAt.Time,
+		UpdatedAt:       row.UpdatedAt.Time,
+	}, nil
 }
 
 func (r *PostgresRepo) UpdateSessionStatus(ctx context.Context, sessionID string, status video.UploadSessionStatus) error {
-	query := `UPDATE upload_sessions SET status = $1, updated_at = NOW() WHERE id = $2;`
-	_, err := r.pool.Exec(ctx, query, string(status), sessionID)
-	if err != nil {
-		return fmt.Errorf("failed to update upload session status: %w", err)
+	params := sqlc.UpdateUploadSessionStatusParams{
+		Status: string(status),
+		ID:     toPgUUID(sessionID),
+	}
+	if err := r.queries.UpdateUploadSessionStatus(ctx, params); err != nil {
+		return fmt.Errorf("failed to update upload session status via sqlc: %w", err)
 	}
 	return nil
 }
 
 func (r *PostgresRepo) RecordPartUploaded(ctx context.Context, sessionID string, partNumber int, etag string, sizeBytes int64) error {
-	query := `
-		INSERT INTO upload_parts (
-			upload_session_id, part_number, etag, size_bytes, status, uploaded_at
-		) VALUES (
-			$1, $2, $3, $4, 'UPLOADED', NOW()
-		)
-		ON CONFLICT (upload_session_id, part_number) DO UPDATE SET
-			etag = EXCLUDED.etag,
-			size_bytes = EXCLUDED.size_bytes,
-			status = 'UPLOADED',
-			uploaded_at = NOW();
-	`
-	_, err := r.pool.Exec(ctx, query, sessionID, partNumber, etag, sizeBytes)
-	if err != nil {
-		return fmt.Errorf("failed to record uploaded part: %w", err)
+	params := sqlc.RecordPartUploadedParams{
+		ID:                toPgUUID(uuid.NewString()),
+		UploadSessionID:   toPgUUID(sessionID),
+		PartNumber:        int32(partNumber),
+		Etag:              toPgText(etag),
+		SizeBytes:         sizeBytes,
+	}
+
+	if err := r.queries.RecordPartUploaded(ctx, params); err != nil {
+		return fmt.Errorf("failed to record uploaded part via sqlc: %w", err)
 	}
 	return nil
 }
 
 func (r *PostgresRepo) GetCompletedParts(ctx context.Context, sessionID string) ([]video.CompletedPart, error) {
-	query := `
-		SELECT part_number, etag
-		FROM upload_parts
-		WHERE upload_session_id = $1 AND status = 'UPLOADED'
-		ORDER BY part_number ASC;
-	`
-	rows, err := r.pool.Query(ctx, query, sessionID)
+	rows, err := r.queries.GetCompletedPartsBySessionID(ctx, toPgUUID(sessionID))
 	if err != nil {
-		return nil, fmt.Errorf("failed to get completed parts: %w", err)
+		return nil, fmt.Errorf("failed to get completed parts via sqlc: %w", err)
 	}
-	defer rows.Close()
 
-	var parts []video.CompletedPart
-	for rows.Next() {
-		var p video.CompletedPart
-		if err := rows.Scan(&p.PartNumber, &p.ETag); err != nil {
-			return nil, fmt.Errorf("failed to scan completed part: %w", err)
-		}
-		parts = append(parts, p)
+	parts := make([]video.CompletedPart, 0, len(rows))
+	for _, row := range rows {
+		parts = append(parts, video.CompletedPart{
+			PartNumber: int(row.PartNumber),
+			ETag:       fromPgText(row.Etag),
+		})
 	}
 	return parts, nil
 }
 
 func (r *PostgresRepo) ListExpiredSessions(ctx context.Context, olderThan time.Duration) ([]*video.UploadSession, error) {
-	threshold := time.Now().Add(-olderThan)
-	query := `
-		SELECT 
-			id, video_id, upload_id, storage_bucket, storage_key,
-			file_fingerprint, total_size_bytes, part_size_bytes, total_parts,
-			status, expires_at, created_at, updated_at
-		FROM upload_sessions
-		WHERE status = 'UPLOADING' AND expires_at < $1
-		ORDER BY expires_at ASC
-		LIMIT 100;
-	`
-	rows, err := r.pool.Query(ctx, query, threshold)
+	threshold := toPgTimestamptz(time.Now().Add(-olderThan))
+	rows, err := r.queries.ListExpiredUploadSessions(ctx, threshold)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list expired sessions: %w", err)
+		return nil, fmt.Errorf("failed to list expired sessions via sqlc: %w", err)
 	}
-	defer rows.Close()
 
-	var sessions []*video.UploadSession
-	for rows.Next() {
-		var s video.UploadSession
-		var statusStr string
-		err := rows.Scan(
-			&s.ID, &s.VideoID, &s.UploadID, &s.StorageBucket, &s.StorageKey,
-			&s.FileFingerprint, &s.TotalSizeBytes, &s.PartSizeBytes, &s.TotalParts,
-			&statusStr, &s.ExpiresAt, &s.CreatedAt, &s.UpdatedAt,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan expired session: %w", err)
-		}
-		s.Status = video.UploadSessionStatus(statusStr)
-		sessions = append(sessions, &s)
+	sessions := make([]*video.UploadSession, 0, len(rows))
+	for _, row := range rows {
+		sessions = append(sessions, &video.UploadSession{
+			ID:              fromPgUUID(row.ID),
+			VideoID:         fromPgUUID(row.VideoID),
+			UploadID:        row.UploadID,
+			StorageBucket:   row.StorageBucket,
+			StorageKey:      row.StorageKey,
+			FileFingerprint: fromPgText(row.FileFingerprint),
+			TotalSizeBytes:  row.TotalSizeBytes,
+			PartSizeBytes:   row.PartSizeBytes,
+			TotalParts:      int(row.TotalParts),
+			Status:          video.UploadSessionStatus(row.Status),
+			ExpiresAt:       row.ExpiresAt.Time,
+			CreatedAt:       row.CreatedAt.Time,
+			UpdatedAt:       row.UpdatedAt.Time,
+		})
 	}
 	return sessions, nil
 }
