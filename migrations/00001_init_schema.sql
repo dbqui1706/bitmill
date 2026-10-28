@@ -1,6 +1,14 @@
--- Bitmill PostgreSQL 15+ Unified Schema for SQLC
-
+-- +goose Up
+-- +goose StatementBegin
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
 
 CREATE TYPE video_status AS ENUM (
     'PENDING_UPLOAD',
@@ -25,7 +33,7 @@ CREATE TYPE job_status AS ENUM (
 );
 
 CREATE TABLE videos (
-    id UUID PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL,
     title VARCHAR(255) NOT NULL,
     description TEXT,
@@ -41,38 +49,17 @@ CREATE TABLE videos (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE upload_sessions (
-    id UUID PRIMARY KEY,
-    video_id UUID NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
-    upload_id TEXT NOT NULL,
-    storage_bucket VARCHAR(128) NOT NULL,
-    storage_key TEXT NOT NULL,
-    file_fingerprint VARCHAR(128),
-    total_size_bytes BIGINT NOT NULL DEFAULT 0,
-    part_size_bytes BIGINT NOT NULL DEFAULT 20971520,
-    total_parts INT NOT NULL DEFAULT 1,
-    status VARCHAR(32) NOT NULL DEFAULT 'UPLOADING',
-    expires_at TIMESTAMPTZ NOT NULL,
-    is_consumed BOOLEAN NOT NULL DEFAULT FALSE,
-    client_ip VARCHAR(45),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+CREATE INDEX idx_videos_user_id ON videos(user_id);
+CREATE INDEX idx_videos_status ON videos(status);
+CREATE INDEX idx_videos_created_at ON videos(created_at DESC);
 
-CREATE TABLE upload_parts (
-    id UUID PRIMARY KEY,
-    upload_session_id UUID NOT NULL REFERENCES upload_sessions(id) ON DELETE CASCADE,
-    part_number INT NOT NULL,
-    etag VARCHAR(128),
-    size_bytes BIGINT NOT NULL,
-    status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
-    uploaded_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uq_session_part UNIQUE (upload_session_id, part_number)
-);
+CREATE TRIGGER trg_videos_updated_at
+BEFORE UPDATE ON videos
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TABLE video_renditions (
-    id UUID PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     video_id UUID NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
     resolution_name VARCHAR(32) NOT NULL,
     width INT NOT NULL,
@@ -86,8 +73,10 @@ CREATE TABLE video_renditions (
     CONSTRAINT uq_video_resolution UNIQUE (video_id, resolution_name)
 );
 
+CREATE INDEX idx_video_renditions_video_id ON video_renditions(video_id);
+
 CREATE TABLE processing_jobs (
-    id UUID PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     video_id UUID NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
     worker_id VARCHAR(64),
     status job_status NOT NULL DEFAULT 'QUEUED',
@@ -98,3 +87,18 @@ CREATE TABLE processing_jobs (
     finished_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX idx_processing_jobs_video_id ON processing_jobs(video_id);
+CREATE INDEX idx_processing_jobs_status ON processing_jobs(status);
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+DROP TABLE IF EXISTS processing_jobs CASCADE;
+DROP TABLE IF EXISTS video_renditions CASCADE;
+DROP TABLE IF EXISTS videos CASCADE;
+DROP TYPE IF EXISTS job_status CASCADE;
+DROP TYPE IF EXISTS rendition_status CASCADE;
+DROP TYPE IF EXISTS video_status CASCADE;
+DROP FUNCTION IF EXISTS update_updated_at_column CASCADE;
+-- +goose StatementEnd

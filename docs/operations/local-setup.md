@@ -49,15 +49,19 @@ All development tasks are automated via `make`:
 # 1. Start all infrastructure containers (PostgreSQL & RabbitMQ)
 make docker-up
 
-# 2. Apply database migrations
-make db-migrate
+# 2. Apply database migrations via Goose
+make migrate-up
 
-# 3. Run unit tests
+# 3. Check migration status
+make migrate-status
+
+# 4. Run unit tests
 make test
 
-# 4. Verify live integration with real Cloudflare R2
+# 5. Verify live integration with real Cloudflare R2
 make test-e2e
 
-# 5. Start the API server locally
+# 6. Start the API server locally
 make run
+
 ```

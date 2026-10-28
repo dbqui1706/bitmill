@@ -1,4 +1,4 @@
-.PHONY: help run dev build test test-e2e verify-r2 docker-up docker-down docker-logs docker-ps db-migrate db-psql sqlc clean
+.PHONY: help run dev build test test-e2e verify-r2 docker-up docker-down docker-logs docker-ps db-psql migrate-up migrate-down migrate-status migrate-create db-migrate sqlc clean
 
 # Default target
 .DEFAULT_GOAL := help
@@ -7,6 +7,13 @@
 CYAN  := \033[36m
 GREEN := \033[32m
 RESET := \033[0m
+
+# Tool paths (fallback to GOPATH if not in global PATH)
+GOOSE := $(shell which goose 2>/dev/null || echo "$$(go env GOPATH)/bin/goose")
+SQLC  := $(shell which sqlc 2>/dev/null || echo "$$(go env GOPATH)/bin/sqlc")
+
+# Database connection
+DB_DSN ?= postgres://bitmill_user:bitmill_password@localhost:5432/bitmill_media?sslmode=disable
 
 ## ----------------------------------------------------------------------
 ## 🛠️ BITMILL MEDIA PLATFORM AUTOMATION MAKEFILE
@@ -50,20 +57,28 @@ docker-logs: ## Tail logs from all Docker containers
 docker-ps: ## View status of running Docker containers
 	docker compose ps
 
-## 🗄️ Database Management
-db-migrate: ## Apply database migrations to the running PostgreSQL container
-	@echo "Applying base schema..."
-	docker exec -i bitmill-postgres psql -U bitmill_user -d bitmill_media < scripts/init-db.sql
-	@echo "Applying v2 multipart migration..."
-	docker exec -i bitmill-postgres psql -U bitmill_user -d bitmill_media < scripts/migrate-v2-multipart.sql
-	@echo "✅ Database migrations applied successfully!"
+## 🗄️ Database Management & Goose Migrations
+migrate-up: ## Run all pending database migrations via Goose
+	$(GOOSE) -dir migrations postgres "$(DB_DSN)" up
+
+migrate-down: ## Roll back the most recent database migration via Goose
+	$(GOOSE) -dir migrations postgres "$(DB_DSN)" down
+
+migrate-status: ## Check current database migration status via Goose
+	$(GOOSE) -dir migrations postgres "$(DB_DSN)" status
+
+migrate-create: ## Create a new SQL migration file (usage: make migrate-create name=add_users)
+	@if [ -z "$(name)" ]; then echo "Error: Please specify migration name, e.g., make migrate-create name=add_users"; exit 1; fi
+	$(GOOSE) -dir migrations create $(name) sql
+
+db-migrate: migrate-up ## Alias for migrate-up
 
 db-psql: ## Open an interactive psql session in the PostgreSQL container
 	docker exec -it bitmill-postgres psql -U bitmill_user -d bitmill_media
 
 ## ⚙️ Code Generation
-sqlc: ## Generate type-safe Go database code using sqlc
-	cd go-streaming && go run github.com/sqlc-dev/sqlc/cmd/sqlc generate
+sqlc: ## Generate type-safe Go database code from migrations using sqlc
+	cd go-streaming && $(SQLC) generate
 
 ## 🧹 Maintenance
 clean: ## Remove build binaries and temporary artifacts
