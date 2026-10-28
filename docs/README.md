@@ -9,6 +9,7 @@ Welcome to the technical documentation repository for the **Bitmill** media stre
 ```
 docs/
 ├── README.md              # [Root] Central navigation index and system overview
+├── milestones.md          # [Roadmap] End-to-end milestones, progress, and verification tracker
 │
 ├── rfcs/                  # [PILLAR 1: HISTORICAL DECISIONS & DISCOVERY (Immutable)]
 │   ├── discovery/         # Multi-perspective discovery reports (BA/UX, Architect, SecOps)
@@ -33,6 +34,7 @@ docs/
 
 | Pillar | Document | Focus Area |
 | :--- | :--- | :--- |
+| **Roadmap** | [milestones.md](file:///Users/quidb/Working/projects/bitmill/docs/milestones.md) | High-level roadmap, deliverables, and verification evidence tracker. |
 | **Pillar 1: RFCs** | [RFC-001](file:///Users/quidb/Working/projects/bitmill/docs/rfcs/001-resumable-video-upload.md) | Architectural decision record for Resumable Direct-to-R2 S3 Multipart Upload. |
 | **Pillar 2: Architecture** | [system-overview.md](file:///Users/quidb/Working/projects/bitmill/docs/architecture/system-overview.md) | High-level system architecture, ABR HLS ladder, and RabbitMQ event pipeline. |
 | **Pillar 2: Architecture** | [database-schema.md](file:///Users/quidb/Working/projects/bitmill/docs/architecture/database-schema.md) | Relational database schema (PostgreSQL 15+), ERD, table DDL, and triggers. |
