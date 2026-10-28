@@ -2,82 +2,826 @@
 <html lang="vi">
 <head>
   <meta charset="UTF-8">
-  <title>Bitmill Streaming Media Server</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bitmill Streaming Media Platform - Resumable Direct-to-R2 Ingestion</title>
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js"></script>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 2rem; }
-    .container { max-width: 900px; margin: 0 auto; }
-    h1 { color: #38bdf8; font-size: 1.8rem; margin-bottom: 0.5rem; }
-    .card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
-    button { background: #0284c7; color: white; border: none; padding: 0.6rem 1.2rem; border-radius: 6px; cursor: pointer; font-weight: 600; }
-    button:hover { background: #0369a1; }
-    .badge { padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8rem; font-weight: bold; }
-    .badge-READY { background: #166534; color: #4ade80; }
-    .badge-PROCESSING { background: #854d0e; color: #facc15; }
-    .badge-PENDING { background: #475569; color: #cbd5e1; }
-    .badge-FAILED { background: #991b1b; color: #f87171; }
-    video { width: 100%; border-radius: 8px; margin-top: 1rem; background: black; }
+    :root {
+      --bg: #0b0f19;
+      --card-bg: #151d2e;
+      --card-border: #1e293b;
+      --primary: #0284c7;
+      --primary-hover: #0369a1;
+      --cyan: #38bdf8;
+      --green: #22c55e;
+      --amber: #f59e0b;
+      --red: #ef4444;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 1.5rem;
+      line-height: 1.5;
+    }
+
+    .container { max-width: 1000px; margin: 0 auto; }
+    
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+      border-bottom: 1px solid var(--card-border);
+      padding-bottom: 1rem;
+    }
+
+    h1 { margin: 0; font-size: 1.6rem; color: var(--cyan); display: flex; align-items: center; gap: 0.5rem; }
+    .badge-protocol {
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--cyan);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      padding: 0.25rem 0.6rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+    }
+
+    .card-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin-top: 0;
+      margin-bottom: 1rem;
+      color: var(--text);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* Uploader Area */
+    .drop-zone {
+      border: 2px dashed #334155;
+      border-radius: 8px;
+      padding: 2rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      background: rgba(15, 23, 42, 0.6);
+    }
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: var(--cyan);
+      background: rgba(56, 189, 248, 0.05);
+    }
+    .drop-zone input[type="file"] { display: none; }
+    .drop-icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+
+    .file-details {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      background: #0f172a;
+      padding: 1rem;
+      border-radius: 8px;
+      margin-top: 1rem;
+      font-size: 0.85rem;
+      border: 1px solid #1e293b;
+    }
+    .file-details strong { color: var(--text-muted); display: block; }
+    .file-details span { color: var(--text); font-weight: 600; font-size: 0.95rem; }
+
+    /* Button Controls */
+    .btn-group { display: flex; gap: 0.75rem; margin-top: 1.25rem; flex-wrap: wrap; }
+    button {
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 0.65rem 1.25rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.9rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.15s ease;
+    }
+    button:hover:not(:disabled) { background: var(--primary-hover); transform: translateY(-1px); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.btn-amber { background: var(--amber); }
+    button.btn-amber:hover:not(:disabled) { background: #d97706; }
+    button.btn-red { background: var(--red); }
+    button.btn-red:hover:not(:disabled) { background: #dc2626; }
+    button.btn-outline { background: transparent; border: 1px solid #334155; color: var(--text-muted); }
+    button.btn-outline:hover:not(:disabled) { border-color: var(--text); color: var(--text); }
+
+    /* Progress & Telemetry */
+    .progress-container { margin-top: 1.5rem; }
+    .progress-labels {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 0.5rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+    .progress-bar-bg {
+      background: #0f172a;
+      height: 12px;
+      border-radius: 9999px;
+      overflow: hidden;
+      border: 1px solid #334155;
+    }
+    .progress-bar-fill {
+      background: linear-gradient(90deg, #0284c7, #38bdf8);
+      height: 100%;
+      width: 0%;
+      border-radius: 9999px;
+      transition: width 0.25s ease-out;
+    }
+
+    .telemetry-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      margin-top: 1rem;
+      background: #0f172a;
+      padding: 0.85rem;
+      border-radius: 8px;
+      text-align: center;
+      border: 1px solid #1e293b;
+    }
+    .telemetry-item small { color: var(--text-muted); display: block; font-size: 0.75rem; text-transform: uppercase; }
+    .telemetry-item span { font-size: 1.1rem; font-weight: 700; color: var(--cyan); }
+
+    /* Visual Chunk Matrix */
+    .chunk-matrix-container { margin-top: 1.25rem; }
+    .chunk-matrix {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 0.5rem;
+      max-height: 140px;
+      overflow-y: auto;
+      padding: 0.5rem;
+      background: #0f172a;
+      border-radius: 8px;
+      border: 1px solid #1e293b;
+    }
+    .chunk-box {
+      width: 28px;
+      height: 28px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: #cbd5e1;
+      background: #1e293b;
+      border: 1px solid #334155;
+      transition: all 0.2s ease;
+      cursor: default;
+      position: relative;
+    }
+    .chunk-box.uploading {
+      background: #0284c7;
+      color: white;
+      border-color: var(--cyan);
+      animation: pulse 1s infinite alternate;
+    }
+    .chunk-box.done {
+      background: #166534;
+      color: #86efac;
+      border-color: #22c55e;
+    }
+    .chunk-box.failed {
+      background: #991b1b;
+      color: #fca5a5;
+      border-color: #ef4444;
+    }
+
+    @keyframes pulse {
+      from { box-shadow: 0 0 4px #38bdf8; }
+      to { box-shadow: 0 0 12px #38bdf8; }
+    }
+
+    /* Live Event Log Stream */
+    .log-stream {
+      background: #030712;
+      border: 1px solid #1f2937;
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.8rem;
+      color: #a7f3d0;
+      height: 120px;
+      overflow-y: auto;
+      margin-top: 1.25rem;
+      line-height: 1.6;
+    }
+    .log-time { color: #6b7280; margin-right: 0.5rem; }
+    .log-err { color: #f87171; }
+    .log-warn { color: #fbbf24; }
+
+    /* Video List Table */
+    table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
+    th, td { text-align: left; padding: 0.75rem 0.5rem; border-bottom: 1px solid #1e293b; font-size: 0.9rem; }
+    th { color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; font-weight: 600; }
+    .badge {
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      display: inline-block;
+    }
+    .badge-READY { background: #14532d; color: #86efac; }
+    .badge-UPLOADED { background: #1e3a8a; color: #93c5fd; }
+    .badge-PROCESSING { background: #713f12; color: #fde047; }
+    .badge-PENDING_UPLOAD, .badge-PENDING { background: #334155; color: #cbd5e1; }
+    .badge-FAILED { background: #7f1d1d; color: #fca5a5; }
+
+    /* Video Player */
+    video { width: 100%; max-height: 480px; border-radius: 8px; background: black; }
+
+    .modal-cors {
+      display: none;
+      background: rgba(0, 0, 0, 0.75);
+      position: fixed;
+      inset: 0;
+      z-index: 999;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .modal-cors.active { display: flex; }
+    .modal-content {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      max-width: 600px;
+      width: 100%;
+      padding: 1.5rem;
+    }
+    pre { background: #0f172a; padding: 1rem; border-radius: 8px; overflow-x: auto; font-size: 0.85rem; color: #e2e8f0; }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>🚀 Bitmill Media Server (DDD Architecture)</h1>
-    <p style="color: #94a3b8;">Hệ thống VOD & Live Ingest: Đăng ký video, cắt HLS ngầm và phát trực tuyến.</p>
+    <header>
+      <div>
+        <h1>⚡ Bitmill Streaming Studio</h1>
+        <small style="color: var(--text-muted);">Hệ thống Ingest Video Resumable Direct-to-R2 & Transcoding Đa Độ Phân Giải (DDD + IoC)</small>
+      </div>
+      <div>
+        <span class="badge-protocol">RFC-001 Native S3 Multipart</span>
+      </div>
+    </header>
 
+    <!-- SECTION 1: RESUMABLE MULTIPART UPLOADER -->
     <div class="card">
-      <h3>Danh sách Video trong hệ thống</h3>
-      <div id="video-list">Đang tải...</div>
+      <div class="card-title">
+        <span>📤 Tải lên Video Mới (Direct to Cloudflare R2)</span>
+        <button class="btn-outline" style="font-size: 0.75rem; padding: 0.3rem 0.6rem;" onclick="toggleCorsModal()">ℹ️ Hướng dẫn CORS R2</button>
+      </div>
+
+      <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+        <div class="drop-icon">🎬</div>
+        <strong id="drop-label">Kéo thả video vào đây hoặc bấm để chọn tệp</strong>
+        <p style="margin: 0.25rem 0 0 0; color: var(--text-muted); font-size: 0.8rem;">Hỗ trợ MP4, MOV, MKV (50MB đến 5GB). Zero server bandwidth.</p>
+        <input type="file" id="file-input" accept="video/*" onchange="handleFileSelect(event)">
+      </div>
+
+      <div id="file-info-card" class="file-details" style="display: none;">
+        <div><strong>Tên Tệp:</strong> <span id="info-name">-</span></div>
+        <div><strong>Dung lượng:</strong> <span id="info-size">-</span></div>
+        <div><strong>Định dạng:</strong> <span id="info-type">-</span></div>
+        <div><strong>Cấu hình Chunks:</strong> <span id="info-chunks">-</span></div>
+      </div>
+
+      <!-- Controls -->
+      <div class="btn-group" id="btn-controls">
+        <button id="btn-start" onclick="startUpload()" disabled>🚀 Bắt đầu Tải lên</button>
+        <button id="btn-pause" class="btn-amber" onclick="pauseUpload()" style="display: none;">⏸️ Tạm dừng</button>
+        <button id="btn-resume" class="btn-amber" onclick="resumeUpload()" style="display: none;">▶️ Tiếp tục</button>
+        <button id="btn-abort" class="btn-red" onclick="abortUpload()" style="display: none;">❌ Hủy bỏ</button>
+      </div>
+
+      <!-- Progress Section -->
+      <div class="progress-container" id="progress-section" style="display: none;">
+        <div class="progress-labels">
+          <span id="progress-status-text">Đang chuẩn bị...</span>
+          <span id="progress-percent" style="color: var(--cyan);">0%</span>
+        </div>
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill" id="progress-bar"></div>
+        </div>
+
+        <div class="telemetry-grid">
+          <div class="telemetry-item">
+            <small>Đã tải</small>
+            <span id="stat-uploaded">0 MB / 0 MB</span>
+          </div>
+          <div class="telemetry-item">
+            <small>Tốc độ</small>
+            <span id="stat-speed">0.00 MB/s</span>
+          </div>
+          <div class="telemetry-item">
+            <small>Còn lại</small>
+            <span id="stat-eta">--</span>
+          </div>
+          <div class="telemetry-item">
+            <small>Chunks</small>
+            <span id="stat-chunks">0 / 0</span>
+          </div>
+        </div>
+
+        <!-- Visual Chunk Matrix -->
+        <div class="chunk-matrix-container">
+          <small style="color: var(--text-muted); font-weight: 600;">MA TRẬN CHUNKS TIẾN TRÌNH:</small>
+          <div class="chunk-matrix" id="chunk-matrix"></div>
+        </div>
+      </div>
+
+      <!-- Event Log Stream -->
+      <div class="log-stream" id="log-stream">
+        <div><span class="log-time">[System]</span> Bitmill Resumable Ingestion Engine sẵn sàng.</div>
+      </div>
     </div>
 
+    <!-- SECTION 2: VIDEO LIBRARY -->
+    <div class="card">
+      <div class="card-title">
+        <span>🎬 Thư viện Video Đã Tải Lên</span>
+        <button class="btn-outline" style="font-size: 0.75rem; padding: 0.3rem 0.6rem;" onclick="loadVideos()">🔄 Làm mới</button>
+      </div>
+      <div id="video-table-container">Đang tải danh sách video...</div>
+    </div>
+
+    <!-- SECTION 3: VIDEO PLAYER -->
     <div class="card" id="player-card" style="display: none;">
-      <h3 id="now-playing-title">Đang phát: ...</h3>
+      <div class="card-title">
+        <span id="now-playing-title">Đang phát: ...</span>
+        <button class="btn-outline" style="font-size: 0.75rem; padding: 0.3rem 0.6rem;" onclick="closePlayer()">✖ Đóng</button>
+      </div>
       <video id="video-player" controls autoplay></video>
     </div>
   </div>
 
-  <script>
-    async function loadVideos() {
-      const res = await fetch('/api/videos');
-      const responseBody = await res.json();
-      const videos = responseBody.data || [];
-      const listDiv = document.getElementById('video-list');
-      if (videos.length === 0) {
-        listDiv.innerHTML = '<p>Chưa có video nào trong hệ thống.</p>';
-        return;
-      }
-      listDiv.innerHTML = videos.map(function(v) {
-        var actionBtn = '';
-        if (v.status === 'PENDING') {
-          actionBtn = '<button onclick="processVideo(\'' + v.id + '\')">⚙️ Cắt HLS</button>';
-        } else if (v.status === 'READY') {
-          actionBtn = '<button onclick="playHLS(\'' + v.hls_url + '\', \'' + v.title + '\')">▶️ Xem ngay</button>';
-        } else if (v.status === 'PROCESSING') {
-          actionBtn = '<span style="color: #facc15;">⏳ Đang cắt...</span>';
-        } else if (v.status === 'FAILED') {
-          actionBtn = '<span style="color: #f87171;">❌ Thất bại</span>';
-        }
+  <!-- MODAL CORS GUIDE -->
+  <div class="modal-cors" id="modal-cors" onclick="if(event.target === this) toggleCorsModal()">
+    <div class="modal-content">
+      <h3 style="margin-top: 0; color: var(--cyan);">Cấu hình Cloudflare R2 CORS</h3>
+      <p style="font-size: 0.85rem; color: var(--text-muted);">
+        Trình duyệt web yêu cầu Cloudflare R2 phải cho phép đọc header <code>ETag</code> khi gửi HTTP PUT. Nếu gặp lỗi CORS, vui lòng dán JSON sau vào:
+        <br><strong>Cloudflare Dashboard &gt; R2 &gt; bitmill-raw-videos &gt; Settings &gt; CORS Policy:</strong>
+      </p>
+      <pre>[
+  {
+    "AllowedOrigins": ["*"],
+    "AllowedMethods": ["GET", "PUT", "POST", "HEAD", "DELETE"],
+    "AllowedHeaders": ["*"],
+    "ExposeHeaders": ["ETag", "etag", "Content-Length"]
+  }
+]</pre>
+      <div style="text-align: right; margin-top: 1rem;">
+        <button onclick="toggleCorsModal()">Đã hiểu</button>
+      </div>
+    </div>
+  </div>
 
-        return '<div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding: 0.75rem 0;">' +
-          '<div>' +
-            '<strong>' + v.title + '</strong> (ID: <code>' + v.id + '</code>)<br>' +
-            '<small style="color: #94a3b8;">File gốc: ' + v.source_path + '</small> ' +
-            '<span class="badge badge-' + v.status + '">' + v.status + '</span>' +
-          '</div>' +
-          '<div>' + actionBtn + '</div>' +
-        '</div>';
-      }).join('');
+  <script>
+    // Global state
+    let selectedFile = null;
+    let activeSession = null;
+    let isPaused = false;
+    let isAborted = false;
+    let uploadStartTime = 0;
+    let lastUploadedBytes = 0;
+    let lastSpeedCalcTime = 0;
+    let smoothedSpeedMBps = 0;
+
+    function log(msg, type = 'info') {
+      const stream = document.getElementById('log-stream');
+      const timeStr = new Date().toLocaleTimeString();
+      const div = document.createElement('div');
+      let colorClass = '';
+      if (type === 'err') colorClass = 'log-err';
+      if (type === 'warn') colorClass = 'log-warn';
+      div.innerHTML = `<span class="log-time">[${timeStr}]</span> <span class="${colorClass}">${msg}</span>`;
+      stream.appendChild(div);
+      stream.scrollTop = stream.scrollHeight;
     }
 
-    async function processVideo(id) {
-      await fetch('/api/videos/' + id + '/process', { method: 'POST' });
-      alert('Đã gửi lệnh cắt video sang HLS! Hệ thống đang xử lý trong nền...');
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return (bytes / Math.pow(k, i)).toFixed(2) + ' ' + sizes[i];
+    }
+
+    function toggleCorsModal() {
+      const m = document.getElementById('modal-cors');
+      m.classList.toggle('active');
+    }
+
+    function handleFileSelect(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      selectedFile = file;
+
+      // RFC-001 Adaptive Part Size calculation
+      const partSize = file.size <= 250 * 1024 * 1024 ? 10 * 1024 * 1024 : 20 * 1024 * 1024;
+      const totalParts = Math.ceil(file.size / partSize);
+
+      document.getElementById('info-name').innerText = file.name;
+      document.getElementById('info-size').innerText = formatBytes(file.size);
+      document.getElementById('info-type').innerText = file.type || 'video/mp4';
+      document.getElementById('info-chunks').innerText = `${totalParts} chunks (${formatBytes(partSize)}/chunk)`;
+
+      document.getElementById('file-info-card').style.display = 'grid';
+      document.getElementById('drop-label').innerText = `Đã chọn: ${file.name}`;
+      document.getElementById('btn-start').disabled = false;
+
+      log(`Đã chọn tệp: ${file.name} (${formatBytes(file.size)}). Sẵn sàng upload.`);
+    }
+
+    // Drag and Drop
+    const dropZone = document.getElementById('drop-zone');
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      if (e.dataTransfer.files.length) {
+        document.getElementById('file-input').files = e.dataTransfer.files;
+        handleFileSelect({ target: { files: e.dataTransfer.files } });
+      }
+    });
+
+    async function startUpload() {
+      if (!selectedFile) return;
+
+      isPaused = false;
+      isAborted = false;
+      document.getElementById('btn-start').style.display = 'none';
+      document.getElementById('btn-pause').style.display = 'inline-flex';
+      document.getElementById('btn-abort').style.display = 'inline-flex';
+      document.getElementById('progress-section').style.display = 'block';
+
+      log(`Đang gửi yêu cầu khởi tạo session tới Bitmill API...`);
+      document.getElementById('progress-status-text').innerText = 'Đang khởi tạo session trên Cloudflare R2...';
+
+      try {
+        const initRes = await fetch('/api/v1/videos/upload-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: selectedFile.name.replace(/\.[^/.]+$/, ''),
+            file_name: selectedFile.name,
+            file_size: selectedFile.size,
+            mime_type: selectedFile.type || 'video/mp4',
+            file_fingerprint: `${selectedFile.size}-${selectedFile.name}-${selectedFile.lastModified}`
+          })
+        });
+
+        const initBody = await initRes.json();
+        if (!initBody.success) {
+          throw new Error(initBody.error || 'Lỗi khởi tạo upload session');
+        }
+
+        activeSession = initBody.data;
+        activeSession.completedMap = {}; // partNumber -> ETag
+        activeSession.file = selectedFile;
+
+        log(`Session tạo thành công: VideoID=${activeSession.video_id}, Tổng ${activeSession.total_parts} chunks.`);
+
+        // Render Visual Matrix
+        renderChunkMatrix(activeSession.total_parts);
+
+        uploadStartTime = Date.now();
+        lastSpeedCalcTime = Date.now();
+        lastUploadedBytes = 0;
+        smoothedSpeedMBps = 0;
+
+        await runUploadLoop();
+
+      } catch (err) {
+        log(`Lỗi khởi tạo: ${err.message}`, 'err');
+        document.getElementById('progress-status-text').innerText = 'Lỗi: ' + err.message;
+        resetControlButtons();
+      }
+    }
+
+    function renderChunkMatrix(totalParts) {
+      const container = document.getElementById('chunk-matrix');
+      container.innerHTML = '';
+      for (let i = 1; i <= totalParts; i++) {
+        const box = document.createElement('div');
+        box.className = 'chunk-box';
+        box.id = `chunk-box-${i}`;
+        box.innerText = i;
+        box.title = `Part ${i}: Chưa tải`;
+        container.appendChild(box);
+      }
+    }
+
+    async function runUploadLoop() {
+      const { parts, part_size_bytes, file, video_id, total_parts } = activeSession;
+      const partMap = {};
+      parts.forEach(p => partMap[p.part_number] = p.upload_url);
+
+      document.getElementById('progress-status-text').innerText = 'Đang đẩy chunks trực tiếp lên Cloudflare R2...';
+
+      for (let i = 1; i <= total_parts; i++) {
+        if (isPaused) {
+          log(`Đã tạm dừng tiến trình upload tại Part ${i}.`, 'warn');
+          document.getElementById('progress-status-text').innerText = 'Đã tạm dừng.';
+          document.getElementById('btn-pause').style.display = 'none';
+          document.getElementById('btn-resume').style.display = 'inline-flex';
+          return;
+        }
+
+        if (isAborted) {
+          log(`Tiến trình upload đã bị hủy bỏ.`, 'err');
+          return;
+        }
+
+        // Bỏ qua nếu part này đã có ETag
+        if (activeSession.completedMap[i]) continue;
+
+        const startByte = (i - 1) * part_size_bytes;
+        const endByte = Math.min(startByte + part_size_bytes, file.size);
+        const chunkBlob = file.slice(startByte, endByte);
+        const uploadUrl = partMap[i];
+
+        const box = document.getElementById(`chunk-box-${i}`);
+        if (box) box.className = 'chunk-box uploading';
+
+        try {
+          const partStartTime = Date.now();
+          const r2Res = await fetch(uploadUrl, {
+            method: 'PUT',
+            body: chunkBlob,
+            headers: { 'Content-Type': 'application/octet-stream' }
+          });
+
+          if (!r2Res.ok) {
+            throw new Error(`R2 trả về mã lỗi HTTP ${r2Res.status}`);
+          }
+
+          let etag = r2Res.headers.get('ETag') || r2Res.headers.get('etag');
+          if (!etag) {
+            // Trường hợp R2 thiếu CORS ExposeHeaders ETag
+            throw new Error(`Cloudflare R2 không trả về header ETag (Vui lòng kiểm tra cấu hình CORS R2)`);
+          }
+          etag = etag.replace(/"/g, ''); // Xóa quote nếu có
+
+          activeSession.completedMap[i] = `"${etag}"`;
+
+          if (box) {
+            box.className = 'chunk-box done';
+            box.title = `Part ${i}: Thành công (ETag: ${etag.substring(0, 8)}...)`;
+          }
+
+          // Cập nhật telemetry
+          const chunkSize = endByte - startByte;
+          updateTelemetry(chunkSize);
+
+        } catch (err) {
+          if (box) box.className = 'chunk-box failed';
+          log(`Lỗi upload Part ${i}: ${err.message}`, 'err');
+          if (err.message.includes('CORS') || err.message.includes('ETag') || err.name === 'TypeError') {
+            toggleCorsModal();
+          }
+          document.getElementById('progress-status-text').innerText = `Lỗi Part ${i}: ${err.message}`;
+          pauseUpload();
+          return;
+        }
+      }
+
+      // Khi toàn bộ parts đã hoàn tất
+      await finalizeUpload();
+    }
+
+    function updateTelemetry(chunkBytesJustUploaded) {
+      const { file, total_parts, completedMap } = activeSession;
+      const completedCount = Object.keys(completedMap).length;
+
+      // Tính tổng bytes đã xong
+      let uploadedBytes = 0;
+      for (let i = 1; i <= total_parts; i++) {
+        if (completedMap[i]) {
+          const start = (i - 1) * activeSession.part_size_bytes;
+          const end = Math.min(start + activeSession.part_size_bytes, file.size);
+          uploadedBytes += (end - start);
+        }
+      }
+
+      const percent = Math.min(100, Math.round((uploadedBytes / file.size) * 100));
+      document.getElementById('progress-bar').style.width = percent + '%';
+      document.getElementById('progress-percent').innerText = percent + '%';
+      document.getElementById('stat-uploaded').innerText = `${formatBytes(uploadedBytes)} / ${formatBytes(file.size)}`;
+      document.getElementById('stat-chunks').innerText = `${completedCount} / ${total_parts}`;
+
+      // Tính tốc độ trung bình (EMA Smoothing)
+      const now = Date.now();
+      const timeDeltaSec = (now - lastSpeedCalcTime) / 1000;
+      if (timeDeltaSec >= 0.5) {
+        const instantSpeedMBps = ((uploadedBytes - lastUploadedBytes) / (1024 * 1024)) / timeDeltaSec;
+        smoothedSpeedMBps = smoothedSpeedMBps === 0 ? instantSpeedMBps : (0.7 * smoothedSpeedMBps + 0.3 * instantSpeedMBps);
+        lastSpeedCalcTime = now;
+        lastUploadedBytes = uploadedBytes;
+
+        document.getElementById('stat-speed').innerText = smoothedSpeedMBps.toFixed(2) + ' MB/s';
+
+        const remainingBytes = file.size - uploadedBytes;
+        if (smoothedSpeedMBps > 0) {
+          const etaSec = Math.round((remainingBytes / (1024 * 1024)) / smoothedSpeedMBps);
+          document.getElementById('stat-eta').innerText = etaSec + 's';
+        }
+      }
+    }
+
+    async function finalizeUpload() {
+      document.getElementById('progress-status-text').innerText = 'Đang ghép file hoàn tất (CompleteMultipartUpload)...';
+      log(`Tất cả ${activeSession.total_parts} chunks đã xong! Đang yêu cầu R2 ghép file...`);
+
+      const payloadParts = [];
+      for (let i = 1; i <= activeSession.total_parts; i++) {
+        payloadParts.push({
+          part_number: i,
+          etag: activeSession.completedMap[i]
+        });
+      }
+
+      try {
+        const res = await fetch(`/api/v1/videos/${activeSession.video_id}/complete-upload`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ parts: payloadParts })
+        });
+
+        const body = await res.json();
+        if (!body.success) {
+          throw new Error(body.error || 'Lỗi ghép file');
+        }
+
+        document.getElementById('progress-bar').style.width = '100%';
+        document.getElementById('progress-percent').innerText = '100%';
+        document.getElementById('progress-status-text').innerText = '🎉 Tải lên & Ghép file thành công 100%!';
+        log(`Ghép file thành công trên Cloudflare R2! Video sẵn sàng chuyển sang bước Transcoding.`, 'info');
+
+        document.getElementById('btn-pause').style.display = 'none';
+        document.getElementById('btn-abort').style.display = 'none';
+
+        setTimeout(() => {
+          loadVideos();
+        }, 1500);
+
+      } catch (err) {
+        log(`Lỗi ghép file: ${err.message}`, 'err');
+        document.getElementById('progress-status-text').innerText = 'Lỗi ghép file: ' + err.message;
+      }
+    }
+
+    function pauseUpload() {
+      isPaused = true;
+      document.getElementById('btn-pause').style.display = 'none';
+      document.getElementById('btn-resume').style.display = 'inline-flex';
+      log(`Người dùng đã bấm Tạm dừng.`, 'warn');
+    }
+
+    async function resumeUpload() {
+      isPaused = false;
+      document.getElementById('btn-resume').style.display = 'none';
+      document.getElementById('btn-pause').style.display = 'inline-flex';
+      log(`Tiếp tục tải lên các chunks còn thiếu...`);
+
+      // Hỏi lại backend upload-status để refresh Presigned URLs nếu bị hết hạn
+      try {
+        const statusRes = await fetch(`/api/v1/videos/${activeSession.video_id}/upload-status`);
+        const statusBody = await statusRes.json();
+        if (statusBody.success) {
+          // Cập nhật lại missing part URLs mới
+          statusBody.data.missing_parts.forEach(p => {
+            const found = activeSession.parts.find(item => item.part_number === p.part_number);
+            if (found) found.upload_url = p.upload_url;
+          });
+        }
+      } catch (e) {
+        log(`Lưu ý: Không thể refresh URLs, tiếp tục với URLs hiện có.`);
+      }
+
+      runUploadLoop();
+    }
+
+    async function abortUpload() {
+      if (!confirm('Bạn có chắc chắn muốn hủy phiên tải lên này và dọn dẹp bộ nhớ trên R2 không?')) return;
+      isAborted = true;
+
+      try {
+        await fetch(`/api/v1/videos/${activeSession.video_id}/upload-session`, { method: 'DELETE' });
+        log(`Đã hủy bỏ session ${activeSession.video_id} và giải phóng bộ nhớ trên Cloudflare R2.`, 'warn');
+        document.getElementById('progress-status-text').innerText = 'Đã hủy phiên tải lên.';
+      } catch (err) {
+        log(`Lỗi khi gọi abort: ${err.message}`, 'err');
+      }
+
+      resetControlButtons();
+    }
+
+    function resetControlButtons() {
+      document.getElementById('btn-start').style.display = 'inline-flex';
+      document.getElementById('btn-start').disabled = false;
+      document.getElementById('btn-pause').style.display = 'none';
+      document.getElementById('btn-resume').style.display = 'none';
+      document.getElementById('btn-abort').style.display = 'none';
+    }
+
+    // Load Video List
+    async function loadVideos() {
+      const container = document.getElementById('video-table-container');
+      try {
+        const res = await fetch('/api/videos');
+        const body = await res.json();
+        const videos = body.data || [];
+
+        if (videos.length === 0) {
+          container.innerHTML = '<p style="color: var(--text-muted);">Chưa có video nào trong hệ thống.</p>';
+          return;
+        }
+
+        let html = `<table>
+          <thead>
+            <tr>
+              <th>Tiêu đề / ID</th>
+              <th>Dung lượng</th>
+              <th>Trạng thái</th>
+              <th>Hành động</th>
+            </tr>
+          </thead>
+          <tbody>`;
+
+        videos.forEach(v => {
+          let actionBtn = '';
+          if (v.status === 'READY') {
+            const streamUrl = v.master_playlist_url || v.hls_url || '';
+            actionBtn = `<button style="font-size: 0.8rem; padding: 0.35rem 0.75rem;" onclick="playHLS('${streamUrl}', '${v.title}')">▶️ Phát Video</button>`;
+          } else if (v.status === 'UPLOADED') {
+            actionBtn = `<button style="font-size: 0.8rem; padding: 0.35rem 0.75rem; background: #4f46e5;" onclick="triggerTranscode('${v.id}')">⚙️ Cắt HLS ABR</button>`;
+          } else if (v.status === 'PROCESSING') {
+            actionBtn = '<span style="color: var(--amber); font-size: 0.85rem;">⏳ Đang xử lý...</span>';
+          } else if (v.status === 'PENDING_UPLOAD') {
+            actionBtn = '<span style="color: var(--text-muted); font-size: 0.85rem;">Đang upload...</span>';
+          } else {
+            actionBtn = '<span style="color: var(--red); font-size: 0.85rem;">Lỗi</span>';
+          }
+
+          html += `<tr>
+            <td>
+              <strong>${v.title}</strong><br>
+              <code style="color: var(--text-muted); font-size: 0.75rem;">${v.id}</code>
+            </td>
+            <td>${formatBytes(v.raw_size_bytes || 0)}</td>
+            <td><span class="badge badge-${v.status}">${v.status}</span></td>
+            <td>${actionBtn}</td>
+          </tr>`;
+        });
+
+        html += `</tbody></table>`;
+        container.innerHTML = html;
+
+      } catch (err) {
+        container.innerHTML = `<p style="color: var(--red);">Lỗi tải danh sách: ${err.message}</p>`;
+      }
+    }
+
+    async function triggerTranscode(id) {
+      alert(`Đang gửi lệnh yêu cầu FFmpeg transcode video ${id}...`);
+      await fetch(`/api/videos/${id}/process`, { method: 'POST' });
       setTimeout(loadVideos, 1000);
     }
 
     function playHLS(url, title) {
-      document.getElementById('player-card').style.display = 'block';
+      const card = document.getElementById('player-card');
+      card.style.display = 'block';
       document.getElementById('now-playing-title').innerText = 'Đang phát: ' + title;
       const video = document.getElementById('video-player');
+
       if (Hls.isSupported()) {
         const hls = new Hls();
         hls.loadSource(url);
@@ -85,10 +829,20 @@
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
         video.src = url;
       }
+      card.scrollIntoView({ behavior: 'smooth' });
     }
 
+    function closePlayer() {
+      const card = document.getElementById('player-card');
+      const video = document.getElementById('video-player');
+      video.pause();
+      video.src = '';
+      card.style.display = 'none';
+    }
+
+    // Initial load
     loadVideos();
-    setInterval(loadVideos, 3000); // Tự động cập nhật trạng thái
+    setInterval(loadVideos, 6000);
   </script>
 </body>
 </html>
