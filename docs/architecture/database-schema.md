@@ -90,9 +90,6 @@ erDiagram
 ## 2. Complete DDL Specification
 
 ```sql
--- Enable UUID v4 extension
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
 -- 1. Custom ENUM Types
 CREATE TYPE video_status AS ENUM (
     'PENDING_UPLOAD',
@@ -118,7 +115,7 @@ CREATE TYPE job_status AS ENUM (
 
 -- 2. Videos Table
 CREATE TABLE IF NOT EXISTS videos (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL,
     title VARCHAR(255) NOT NULL,
     description TEXT,
@@ -140,7 +137,7 @@ CREATE INDEX IF NOT EXISTS idx_videos_created_at ON videos(created_at DESC);
 
 -- 3. Upload Sessions Table (Multipart Tracking)
 CREATE TABLE IF NOT EXISTS upload_sessions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     video_id UUID NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
     upload_id TEXT NOT NULL,
     storage_bucket VARCHAR(128) NOT NULL,
@@ -165,7 +162,7 @@ CREATE INDEX IF NOT EXISTS idx_upload_sessions_expires_at ON upload_sessions(exp
 
 -- 4. Upload Parts Table (Chunk-level Telemetry)
 CREATE TABLE IF NOT EXISTS upload_parts (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     upload_session_id UUID NOT NULL REFERENCES upload_sessions(id) ON DELETE CASCADE,
     part_number INT NOT NULL CHECK (part_number BETWEEN 1 AND 10000),
     etag VARCHAR(128),
@@ -180,7 +177,7 @@ CREATE INDEX IF NOT EXISTS idx_upload_parts_session_status ON upload_parts(uploa
 
 -- 5. Video Renditions Table (HLS ABR Variants)
 CREATE TABLE IF NOT EXISTS video_renditions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     video_id UUID NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
     resolution_name VARCHAR(32) NOT NULL, -- '1080p', '720p', '480p', '360p'
     width INT NOT NULL,
@@ -198,7 +195,7 @@ CREATE INDEX IF NOT EXISTS idx_video_renditions_video_id ON video_renditions(vid
 
 -- 6. Processing Jobs Table (Worker Execution Tracking)
 CREATE TABLE IF NOT EXISTS processing_jobs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     video_id UUID NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
     worker_id VARCHAR(64),
     status job_status NOT NULL DEFAULT 'QUEUED',

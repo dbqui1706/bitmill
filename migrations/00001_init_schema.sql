@@ -1,7 +1,5 @@
 -- +goose Up
 -- +goose StatementBegin
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -33,7 +31,7 @@ CREATE TYPE job_status AS ENUM (
 );
 
 CREATE TABLE videos (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL,
     title VARCHAR(255) NOT NULL,
     description TEXT,
@@ -59,7 +57,7 @@ FOR EACH ROW
 EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TABLE video_renditions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     video_id UUID NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
     resolution_name VARCHAR(32) NOT NULL,
     width INT NOT NULL,
@@ -76,7 +74,7 @@ CREATE TABLE video_renditions (
 CREATE INDEX idx_video_renditions_video_id ON video_renditions(video_id);
 
 CREATE TABLE processing_jobs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     video_id UUID NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
     worker_id VARCHAR(64),
     status job_status NOT NULL DEFAULT 'QUEUED',

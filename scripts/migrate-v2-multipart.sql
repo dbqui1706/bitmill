@@ -22,7 +22,7 @@ CREATE INDEX IF NOT EXISTS idx_upload_sessions_fingerprint ON upload_sessions(fi
 
 -- 2. Create upload_parts table
 CREATE TABLE IF NOT EXISTS upload_parts (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     upload_session_id UUID NOT NULL REFERENCES upload_sessions(id) ON DELETE CASCADE,
     part_number INT NOT NULL CHECK (part_number BETWEEN 1 AND 10000),
     etag VARCHAR(128),

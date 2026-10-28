@@ -1,7 +1,7 @@
 -- +goose Up
 -- +goose StatementBegin
 CREATE TABLE upload_sessions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     video_id UUID NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
     upload_id TEXT NOT NULL,
     storage_bucket VARCHAR(128) NOT NULL,
@@ -30,7 +30,7 @@ FOR EACH ROW
 EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TABLE upload_parts (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     upload_session_id UUID NOT NULL REFERENCES upload_sessions(id) ON DELETE CASCADE,
     part_number INT NOT NULL CHECK (part_number BETWEEN 1 AND 10000),
     etag VARCHAR(128),
