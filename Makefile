@@ -1,4 +1,4 @@
-.PHONY: help run dev build test test-e2e verify-r2 docker-up docker-down docker-logs docker-ps db-psql migrate-up migrate-down migrate-status migrate-create db-migrate sqlc clean
+.PHONY: help run dev build worker build-worker test test-e2e verify-r2 verify-worker worktree-create worktree-merge worktree-clean docker-up docker-down docker-logs docker-ps db-psql migrate-up migrate-down migrate-status migrate-create db-migrate sqlc clean
 
 # Default target
 .DEFAULT_GOAL := help
@@ -52,6 +52,26 @@ verify-r2: test-e2e ## Alias for test-e2e
 
 verify-worker: ## Execute live end-to-end integration test for RabbitMQ worker & FFmpeg transcoding
 	cd go-streaming && go run cmd/verify_transcoder_worker/main.go
+
+## 🌿 Git Worktree Isolation Workflow
+worktree-create: ## Create an isolated worktree (usage: make worktree-create NAME=milestone-5)
+	@if [ -z "$(NAME)" ]; then echo "Error: Please specify NAME, e.g., make worktree-create NAME=milestone-5"; exit 1; fi
+	@mkdir -p .worktrees
+	git worktree add -b feat/$(NAME) .worktrees/$(NAME) main
+	@if [ -f .env ]; then ln -sf ../../.env .worktrees/$(NAME)/.env; fi
+	@echo "$(GREEN)✅ Worktree created at .worktrees/$(NAME) on branch feat/$(NAME)$(RESET)"
+
+worktree-merge: ## Merge worktree feature branch back into main (usage: make worktree-merge NAME=milestone-5)
+	@if [ -z "$(NAME)" ]; then echo "Error: Please specify NAME, e.g., make worktree-merge NAME=milestone-5"; exit 1; fi
+	git checkout main
+	git merge --no-ff feat/$(NAME) -m "feat($(NAME)): merge $(NAME) from worktree"
+	@echo "$(GREEN)✅ Merged feat/$(NAME) into main$(RESET)"
+
+worktree-clean: ## Remove worktree directory and branch (usage: make worktree-clean NAME=milestone-5)
+	@if [ -z "$(NAME)" ]; then echo "Error: Please specify NAME, e.g., make worktree-clean NAME=milestone-5"; exit 1; fi
+	git worktree remove .worktrees/$(NAME)
+	git branch -d feat/$(NAME)
+	@echo "$(GREEN)🧹 Cleaned up worktree .worktrees/$(NAME)$(RESET)"
 
 ## 🐳 Infrastructure & Docker
 docker-up: ## Start PostgreSQL and RabbitMQ containers in background

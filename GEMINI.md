@@ -17,6 +17,19 @@
 - **DDD & Clean Architecture**: Maintain strict separation of concerns under `go-streaming/internal/` (`domain`, `application`, `infrastructure`, `interfaces`). `domain` must remain 100% dependency-free.
 - **Media Engine Isolation**: NEVER install FFmpeg on the host machine. All video processing operations must execute through Docker (`mwader/static-ffmpeg:latest`) or root wrapper scripts (`./ffmpeg.sh`, `./ffprobe.sh`).
 - **Configuration**: Always manage application parameters through Viper using `go-streaming/config.yaml` and environment variables.
+- **Git Worktree Isolation for Implementation (MANDATORY)**:
+  - NEVER write feature implementation code directly on the `main` branch.
+  - Upon completing Phase 2 (Clarification & Alignment) and receiving user sign-off, ALWAYS create an isolated git worktree under `.worktrees/<feature-name>` on a dedicated feature branch (`feat/<feature-name>`):
+    ```bash
+    make worktree-create NAME=<feature-name>
+    # Or manually: git worktree add -b feat/<name> .worktrees/<name> main
+    ```
+  - Ensure `.env` is symlinked from the repository root into `.worktrees/<name>/.env` to preserve runtime configuration and secrets.
+  - All code modifications, builds, tests, and verification scripts MUST execute inside the isolated worktree directory.
+  - Only after Phase 3 (Evidence Verification) passes completely, merge the feature branch back into `main` and clean up the worktree using:
+    ```bash
+    make worktree-clean NAME=<feature-name>
+    ```
 - **Pre-flight Build Verification**: Always ensure the Go codebase compiles cleanly before reporting completion:
   ```bash
   cd go-streaming && go build ./...

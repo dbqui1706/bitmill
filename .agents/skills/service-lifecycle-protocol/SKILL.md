@@ -52,6 +52,7 @@ This skill codifies the enterprise engineering framework for breaking down, arch
                                ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ PHASE 3: CONTRACT-FIRST & IoC IMPLEMENTATION                │
+│  0. Worktree Provisioning: `make worktree-create NAME=...`  │
 │  1. Domain Entities & Value Objects (0 external imports)    │
 │  2. Domain Interfaces (Repositories, Storage, Queues)       │
 │  3. Application Use Cases (Injects interfaces only)         │
@@ -65,6 +66,7 @@ This skill codifies the enterprise engineering framework for breaking down, arch
 │  • Evidence 1: Compiler & Unit Tests with Mocks (100% pass) │
 │  • Evidence 2: Live Happy Path run with real storage/DB     │
 │  • Evidence 3: Chaos/Failure Mode run (resume/reconnect)    │
+│  • Worktree Teardown & Merge: `make worktree-merge`         │
 │  >> Final Delivery Sign-Off <<                              │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -112,7 +114,12 @@ When invoked, the **Tech Lead Orchestrator** defines and invokes 3 specialized s
    - Read the 3 discovery reports and synthesize them into `docs/rfcs/XXX-<feature-name>.md` using the template at [RFC_TEMPLATE.md](./templates/RFC_TEMPLATE.md).
    - Present the executive summary and trade-off matrix to the user.
    - **HALT EXECUTION**: Wait for user review and explicit sign-off before writing any implementation code.
-3. **Step 3 (Implementation)**:
+3. **Step 3 (Implementation in Isolated Worktree)**:
+   - **MANDATORY**: Provision a dedicated worktree:
+     ```bash
+     make worktree-create NAME=<feature-name>
+     ```
+   - Switch active workspace to `.worktrees/<feature-name>`.
    - Apply database migrations (DDL).
    - Write domain entities and domain interfaces in `internal/domain/<aggregate>/`.
    - Write infrastructure adapters in `internal/infrastructure/<adapter>/`.
@@ -121,4 +128,9 @@ When invoked, the **Tech Lead Orchestrator** defines and invokes 3 specialized s
 4. **Step 4 (Verification & Delivery)**:
    - Run unit tests with mocks: `go test -v ./internal/application/...`.
    - Run live end-to-end integration tests proving real connectivity.
+   - Once all evidence is validated, merge worktree to `main` and clean up:
+     ```bash
+     make worktree-merge NAME=<feature-name>
+     make worktree-clean NAME=<feature-name>
+     ```
    - Check in code cleanly with git commits.
