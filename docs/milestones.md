@@ -11,8 +11,8 @@ This document tracks the end-to-end implementation progress, deliverables, and v
 | **Milestone 1** | Core Infrastructure & Relational Storage | **`COMPLETED`** | 100% |
 | **Milestone 2** | Cloudflare R2 Storage Adapter & Cloud Connectivity | **`COMPLETED`** | 100% |
 | **Milestone 3** | Resumable Multipart Ingestion & Signed URLs | **`COMPLETED`** | 100% |
-| **Milestone 4** | Background Transcoding Worker & RabbitMQ Orchestration | **`IN PROGRESS`** | Next Up |
-| **Milestone 5** | Production Hardening, CDN Distribution & Observability | **`PLANNED`** | Backlog |
+| **Milestone 4** | Background Transcoding Worker & RabbitMQ Orchestration | **`COMPLETED`** | 100% |
+| **Milestone 5** | Production Hardening, CDN Distribution & Observability | **`IN PROGRESS`** | Next Up |
 
 ---
 
@@ -62,14 +62,18 @@ This document tracks the end-to-end implementation progress, deliverables, and v
 
 ### Milestone 4: Background Transcoding Worker & RabbitMQ Orchestration
 - **Objective**: Asynchronous, distributed video transcoding into Multi-Bitrate Adaptive Bitrate (ABR) HLS streams using isolated Docker FFmpeg.
-- **Status**: **`IN PROGRESS`** 🚀 *(Next Deliverable)*
-- **Planned Deliverables**:
-  - [ ] **RabbitMQ Event Publishing**: API emits `VideoUploadedEvent` to exchange `bitmill.video.events` on `/complete-upload`.
-  - [ ] **Worker Consumer**: Dedicated background worker consuming from `video.transcoding.jobs` with prefetch and graceful shutdown.
-  - [ ] **Docker FFmpeg Media Engine**: Isolated container execution (`mwader/static-ffmpeg:latest`) generating 4 HLS variants (1080p, 720p, 480p, 360p) with closed GOPs (2s segments).
-  - [ ] **HLS Distribution Upload**: Worker streams `.m3u8` manifests and `.ts` segments to Cloudflare R2 `bitmill-processed-videos`.
-  - [ ] **Dead Letter Queue (DLQ)**: Failed tasks routed to `bitmill.video.dlx` / `video.transcoding.dlq` after 3 retry attempts.
-  - [ ] **Database State Machine**: Update status `UPLOADED` $\rightarrow$ `PROCESSING` $\rightarrow$ `READY` (with rendition metadata).
+- **Status**: **`COMPLETED`** ✅
+- **Deliverables**:
+  - [x] **RFC-002 Approved & Implemented**: 360° discovery (BA/UX, Solutions Architect, SecOps/QA) and technical specification.
+  - [x] **RabbitMQ Event Publishing**: API emits persistent `VideoUploadedEvent` to topic exchange `bitmill.video.events` on `/complete-upload` with publisher confirms.
+  - [x] **Worker Consumer Daemon**: Standalone background worker (`cmd/worker`) consuming from `video.transcoding.jobs` with strict `prefetch=1` and graceful shutdown (`SIGINT`/`SIGTERM`).
+  - [x] **Docker FFmpeg Media Engine**: Isolated container execution (`mwader/static-ffmpeg:latest`) with `--network none` sandboxing, dynamic ABR resolution ladder (4K down to 360p with "Never Upscale" capping), closed GOPs (2s segments), and poster thumbnail extraction.
+  - [x] **Parallel HLS Distribution Upload**: Worker streams `.m3u8` master and variant manifests, `.ts` segments, and `thumbnail.jpg` to Cloudflare R2 `bitmill-processed-videos` with optimal CDN caching headers.
+  - [x] **Dead Letter Queue (DLQ) & Retry Topology**: Fail-Fast routing for poison pills and 30s TTL delay exchange retry loop (`bitmill.video.retry`) for transient failures (capped at 3 attempts before DLQ quarantine).
+  - [x] **Database State Machine & Type-Safe Queries**: Atomic update `UPLOADED` $\rightarrow$ `PROCESSING` $\rightarrow$ `READY` (with rendition metadata in `video_renditions` and job tracking in `processing_jobs`).
+- **Verification Evidence**:
+  - `make test`: All unit tests pass with race detector (`-race`), covering dynamic ladder capping, idempotency, poison pill defense, and queue publishing.
+  - `make verify-worker`: Live end-to-end integration test passes all 8 verification steps with real Cloudflare R2, RabbitMQ broker, and isolated Docker FFmpeg (`mwader/static-ffmpeg:latest`), generating multi-rendition HLS (720p, 480p, 360p) + thumbnail in 11.8s, verified in PostgreSQL and publicly streamable over R2 CDN (`HTTP 200 OK`).
 
 ---
 

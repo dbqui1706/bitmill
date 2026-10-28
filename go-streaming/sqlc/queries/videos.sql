@@ -43,3 +43,18 @@ WHERE id = $2;
 UPDATE videos 
 SET status = $1, updated_at = NOW() 
 WHERE id = $2 AND status = $3;
+
+-- name: MarkVideoReady :exec
+UPDATE videos
+SET status = 'READY',
+    master_playlist_url = $2,
+    duration_seconds = $3,
+    thumbnail_url = $4,
+    updated_at = NOW()
+WHERE id = $1;
+
+-- name: MarkVideoFailed :exec
+UPDATE videos
+SET status = 'FAILED',
+    updated_at = NOW()
+WHERE id = $1;

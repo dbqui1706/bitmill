@@ -60,7 +60,10 @@ type UploadService struct {
 	videoRepo       video.Repository
 	sessionRepo     video.UploadSessionRepository
 	storageProvider video.StorageProvider
+	jobRepo         video.JobRepository // Milestone 4
+	jobQueue        video.JobQueue      // Milestone 4
 	rawBucket       string
+	processedBucket string              // Milestone 4
 	sessionTTL      time.Duration
 	log             *logger.Logger
 }
@@ -84,6 +87,13 @@ func NewUploadService(
 		sessionTTL:      sessionTTL,
 		log:             log,
 	}
+}
+
+// SetTranscodingQueue wires the RabbitMQ orchestration broker and job repository (Milestone 4)
+func (s *UploadService) SetTranscodingQueue(jobRepo video.JobRepository, jobQueue video.JobQueue, processedBucket string) {
+	s.jobRepo = jobRepo
+	s.jobQueue = jobQueue
+	s.processedBucket = processedBucket
 }
 
 // CreateUploadSession initializes a resumable multipart session on Cloudflare R2
@@ -297,6 +307,39 @@ func (s *UploadService) CompleteUpload(ctx context.Context, videoID string, part
 	}
 
 	s.log.Info("Successfully completed multipart upload for video %s (Size=%d bytes)", videoID, v.RawSizeBytes)
+
+	// Milestone 4: Emit transcode job to RabbitMQ queue
+	if s.jobQueue != nil && s.jobRepo != nil {
+		targetBucket := s.processedBucket
+		if targetBucket == "" {
+			targetBucket = "bitmill-processed-videos"
+		}
+		targetPrefix := fmt.Sprintf("hls/%s", videoID)
+
+		jobRecord, err := s.jobRepo.CreateJob(ctx, videoID, "", 3)
+		if err != nil {
+			s.log.Error("Failed to record processing job in DB for video %s: %v", videoID, err)
+		} else {
+			jobMsg := &video.TranscodeJobMessage{
+				EventID:      uuid.New().String(),
+				EventType:    "video.uploaded",
+				Timestamp:    time.Now(),
+				VideoID:      videoID,
+				JobID:        jobRecord.ID,
+				SourceBucket: session.StorageBucket,
+				SourceKey:    session.StorageKey,
+				TargetBucket: targetBucket,
+				TargetPrefix: targetPrefix,
+				AttemptCount: 1,
+				MaxAttempts:  3,
+			}
+			if pubErr := s.jobQueue.PublishTranscodeJob(ctx, jobMsg); pubErr != nil {
+				s.log.Error("Failed to publish transcode job to RabbitMQ for video %s: %v", videoID, pubErr)
+			} else {
+				s.log.Info("Dispatched transcode job to RabbitMQ for video %s (JobID=%s)", videoID, jobRecord.ID)
+			}
+		}
+	}
 
 	return &CompleteUploadResponse{
 		VideoID: videoID,

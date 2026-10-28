@@ -71,3 +71,26 @@ func (r *MemoryRepo) UpdateStatusIf(ctx context.Context, id string, newStatus vi
 	return false, nil
 }
 
+func (r *MemoryRepo) MarkReady(ctx context.Context, id, masterPlaylistURL, thumbnailURL string, durationSeconds float64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	v, exists := r.videos[id]
+	if !exists {
+		return video.ErrVideoNotFound
+	}
+	v.MarkReady(masterPlaylistURL, durationSeconds)
+	v.ThumbnailURL = thumbnailURL
+	return nil
+}
+
+func (r *MemoryRepo) MarkFailed(ctx context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	v, exists := r.videos[id]
+	if !exists {
+		return video.ErrVideoNotFound
+	}
+	v.MarkFailed()
+	return nil
+}
+

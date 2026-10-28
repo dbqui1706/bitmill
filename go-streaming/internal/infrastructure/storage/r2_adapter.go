@@ -4,7 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"os"
+	"path"
+	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -239,4 +244,166 @@ func (r *R2Adapter) GetDownloadURL(ctx context.Context, bucket, objectKey string
 	}
 
 	return req.URL, nil
+}
+
+// DownloadToFile streams an object directly from storage to a local file descriptor
+func (r *R2Adapter) DownloadToFile(ctx context.Context, bucket, objectKey, localPath string) error {
+	if err := os.MkdirAll(filepath.Dir(localPath), 0755); err != nil {
+		return fmt.Errorf("failed to create destination directory: %w", err)
+	}
+
+	resp, err := r.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(objectKey),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get object from R2: %w", err)
+	}
+	defer resp.Body.Close()
+
+	outFile, err := os.Create(localPath)
+	if err != nil {
+		return fmt.Errorf("failed to create local file: %w", err)
+	}
+	defer outFile.Close()
+
+	if _, err := io.Copy(outFile, resp.Body); err != nil {
+		return fmt.Errorf("failed to write object to file: %w", err)
+	}
+
+	return nil
+}
+
+// UploadFile uploads a single local file to Cloudflare R2 with appropriate headers
+func (r *R2Adapter) UploadFile(ctx context.Context, localPath, bucket, objectKey, contentType, cacheControl string) error {
+	file, err := os.Open(localPath)
+	if err != nil {
+		return fmt.Errorf("failed to open local file %s: %w", localPath, err)
+	}
+	defer file.Close()
+
+	ext := strings.ToLower(filepath.Ext(localPath))
+	if contentType == "" {
+		switch ext {
+		case ".m3u8":
+			contentType = "application/vnd.apple.mpegurl"
+		case ".ts":
+			contentType = "video/mp2t"
+		case ".jpg", ".jpeg":
+			contentType = "image/jpeg"
+		case ".png":
+			contentType = "image/png"
+		case ".mp4":
+			contentType = "video/mp4"
+		default:
+			contentType = "application/octet-stream"
+		}
+	}
+
+	if cacheControl == "" {
+		switch ext {
+		case ".m3u8":
+			cacheControl = "public, max-age=60"
+		case ".ts":
+			cacheControl = "public, max-age=31536000, immutable"
+		case ".jpg", ".jpeg", ".png":
+			cacheControl = "public, max-age=86400"
+		default:
+			cacheControl = "public, max-age=3600"
+		}
+	}
+
+	input := &s3.PutObjectInput{
+		Bucket:       aws.String(bucket),
+		Key:          aws.String(objectKey),
+		Body:         file,
+		ContentType:  aws.String(contentType),
+		CacheControl: aws.String(cacheControl),
+	}
+
+	if _, err := r.client.PutObject(ctx, input); err != nil {
+		return fmt.Errorf("failed to put object %s to R2: %w", objectKey, err)
+	}
+
+	return nil
+}
+
+// UploadDirectory recursively uploads all files from a directory to Cloudflare R2 using a worker pool
+func (r *R2Adapter) UploadDirectory(ctx context.Context, localDir, bucket, prefix string) error {
+	type uploadTask struct {
+		localPath string
+		remoteKey string
+	}
+
+	var tasks []uploadTask
+	err := filepath.Walk(localDir, func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+
+		relPath, err := filepath.Rel(localDir, p)
+		if err != nil {
+			return err
+		}
+
+		// Ensure forward slash in S3 key
+		slashRelPath := filepath.ToSlash(relPath)
+		var remoteKey string
+		if prefix == "" {
+			remoteKey = slashRelPath
+		} else {
+			remoteKey = path.Join(prefix, slashRelPath)
+		}
+
+		tasks = append(tasks, uploadTask{
+			localPath: p,
+			remoteKey: remoteKey,
+		})
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to scan directory %s: %w", localDir, err)
+	}
+
+	// 16 parallel goroutines to upload segments and manifests quickly
+	taskChan := make(chan uploadTask, len(tasks))
+	for _, t := range tasks {
+		taskChan <- t
+	}
+	close(taskChan)
+
+	const workerCount = 16
+	var wg sync.WaitGroup
+	errChan := make(chan error, workerCount)
+
+	for i := 0; i < workerCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for task := range taskChan {
+				select {
+				case <-ctx.Done():
+					errChan <- ctx.Err()
+					return
+				default:
+					if err := r.UploadFile(ctx, task.localPath, bucket, task.remoteKey, "", ""); err != nil {
+						errChan <- fmt.Errorf("failed to upload %s: %w", task.remoteKey, err)
+						return
+					}
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errChan)
+
+	if firstErr := <-errChan; firstErr != nil {
+		return firstErr
+	}
+
+	return nil
 }

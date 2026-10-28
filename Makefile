@@ -33,8 +33,14 @@ run: ## Run the Bitmill API server (alias for dev)
 
 dev: run ## Run the Bitmill API server in development mode
 
+worker: ## Run the Bitmill transcoding worker daemon
+	cd go-streaming && go run cmd/worker/main.go
+
 build: ## Compile Go application binaries into bin/
-	cd go-streaming && go build -o bin/server cmd/server/main.go
+	cd go-streaming && go build -o bin/server cmd/server/main.go && go build -o bin/worker cmd/worker/main.go
+
+build-worker: ## Compile transcoding worker binary into bin/worker
+	cd go-streaming && go build -o bin/worker cmd/worker/main.go
 
 test: ## Execute all Go unit tests with race detection and coverage
 	cd go-streaming && go test -v -race ./internal/...
@@ -43,6 +49,9 @@ test-e2e: ## Execute live end-to-end integration test with real Cloudflare R2
 	cd go-streaming && go run cmd/verify_multipart_r2/main.go
 
 verify-r2: test-e2e ## Alias for test-e2e
+
+verify-worker: ## Execute live end-to-end integration test for RabbitMQ worker & FFmpeg transcoding
+	cd go-streaming && go run cmd/verify_transcoder_worker/main.go
 
 ## 🐳 Infrastructure & Docker
 docker-up: ## Start PostgreSQL and RabbitMQ containers in background

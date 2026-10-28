@@ -40,4 +40,13 @@ type StorageProvider interface {
 
 	// GetDownloadURL generates a signed or public URL for reading/streaming an object
 	GetDownloadURL(ctx context.Context, bucket, objectKey string, expiry time.Duration) (string, error)
+
+	// DownloadToFile streams an object directly from storage to a local file descriptor
+	DownloadToFile(ctx context.Context, bucket, objectKey, localPath string) error
+
+	// UploadFile uploads a single local file to object storage with content type and cache control headers
+	UploadFile(ctx context.Context, localPath, bucket, objectKey, contentType, cacheControl string) error
+
+	// UploadDirectory recursively uploads all files in a local directory to a target bucket and prefix
+	UploadDirectory(ctx context.Context, localDir, bucket, prefix string) error
 }

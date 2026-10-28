@@ -17,6 +17,8 @@ import (
 var (
 	_ video.Repository              = (*PostgresRepo)(nil)
 	_ video.UploadSessionRepository = (*PostgresRepo)(nil)
+	_ video.JobRepository           = (*PostgresRepo)(nil)
+	_ video.RenditionRepository     = (*PostgresRepo)(nil)
 )
 
 type PostgresRepo struct {
@@ -120,7 +122,7 @@ func (r *PostgresRepo) FindByID(ctx context.Context, id string) (*video.Video, e
 		return nil, fmt.Errorf("failed to query video by id via sqlc: %w", err)
 	}
 
-	return &video.Video{
+	v := &video.Video{
 		ID:                fromPgUUID(row.ID),
 		UserID:            fromPgUUID(row.UserID),
 		Title:             row.Title,
@@ -135,7 +137,14 @@ func (r *PostgresRepo) FindByID(ctx context.Context, id string) (*video.Video, e
 		ThumbnailURL:      fromPgText(row.ThumbnailUrl),
 		CreatedAt:         row.CreatedAt.Time,
 		UpdatedAt:         row.UpdatedAt.Time,
-	}, nil
+	}
+
+	// Optionally load renditions if video is READY or has existing renditions
+	if renditions, err := r.ListRenditions(ctx, id); err == nil && len(renditions) > 0 {
+		v.Renditions = renditions
+	}
+
+	return v, nil
 }
 
 func (r *PostgresRepo) List(ctx context.Context) ([]*video.Video, error) {
@@ -339,4 +348,179 @@ func (r *PostgresRepo) ListExpiredSessions(ctx context.Context, olderThan time.D
 		})
 	}
 	return sessions, nil
+}
+
+// ---------------------------------------------------------
+// Video Lifecycle Status Helpers
+// ---------------------------------------------------------
+
+func (r *PostgresRepo) MarkReady(ctx context.Context, id, masterPlaylistURL, thumbnailURL string, durationSeconds float64) error {
+	params := sqlc.MarkVideoReadyParams{
+		ID:                toPgUUID(id),
+		MasterPlaylistUrl: toPgText(masterPlaylistURL),
+		ThumbnailUrl:      toPgText(thumbnailURL),
+		DurationSeconds:   toPgNumeric(durationSeconds),
+	}
+	if err := r.queries.MarkVideoReady(ctx, params); err != nil {
+		return fmt.Errorf("failed to mark video ready via sqlc: %w", err)
+	}
+	return nil
+}
+
+func (r *PostgresRepo) MarkFailed(ctx context.Context, id string) error {
+	if err := r.queries.MarkVideoFailed(ctx, toPgUUID(id)); err != nil {
+		return fmt.Errorf("failed to mark video failed via sqlc: %w", err)
+	}
+	return nil
+}
+
+// ---------------------------------------------------------
+// JobRepository Implementation
+// ---------------------------------------------------------
+
+func (r *PostgresRepo) CreateJob(ctx context.Context, videoID, workerID string, maxAttempts int) (*video.ProcessingJob, error) {
+	params := sqlc.CreateProcessingJobParams{
+		VideoID:     toPgUUID(videoID),
+		WorkerID:    toPgText(workerID),
+		MaxAttempts: int32(maxAttempts),
+	}
+	row, err := r.queries.CreateProcessingJob(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create processing job via sqlc: %w", err)
+	}
+	return toDomainJob(row), nil
+}
+
+func (r *PostgresRepo) MarkJobProcessing(ctx context.Context, jobID, workerID string) error {
+	params := sqlc.UpdateJobProcessingParams{
+		ID:       toPgUUID(jobID),
+		WorkerID: toPgText(workerID),
+	}
+	if err := r.queries.UpdateJobProcessing(ctx, params); err != nil {
+		return fmt.Errorf("failed to mark job processing via sqlc: %w", err)
+	}
+	return nil
+}
+
+func (r *PostgresRepo) MarkJobCompleted(ctx context.Context, jobID string) error {
+	if err := r.queries.UpdateJobCompleted(ctx, toPgUUID(jobID)); err != nil {
+		return fmt.Errorf("failed to mark job completed via sqlc: %w", err)
+	}
+	return nil
+}
+
+func (r *PostgresRepo) MarkJobFailed(ctx context.Context, jobID, errorMessage string) error {
+	params := sqlc.UpdateJobFailedParams{
+		ID:           toPgUUID(jobID),
+		ErrorMessage: toPgText(errorMessage),
+	}
+	if err := r.queries.UpdateJobFailed(ctx, params); err != nil {
+		return fmt.Errorf("failed to mark job failed via sqlc: %w", err)
+	}
+	return nil
+}
+
+func (r *PostgresRepo) MarkJobDLQ(ctx context.Context, jobID, errorMessage string) error {
+	params := sqlc.UpdateJobDLQParams{
+		ID:           toPgUUID(jobID),
+		ErrorMessage: toPgText(errorMessage),
+	}
+	if err := r.queries.UpdateJobDLQ(ctx, params); err != nil {
+		return fmt.Errorf("failed to mark job dlq via sqlc: %w", err)
+	}
+	return nil
+}
+
+func (r *PostgresRepo) GetActiveJobByVideoID(ctx context.Context, videoID string) (*video.ProcessingJob, error) {
+	row, err := r.queries.GetActiveJobByVideoID(ctx, toPgUUID(videoID))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get active job via sqlc: %w", err)
+	}
+	return toDomainJob(row), nil
+}
+
+func (r *PostgresRepo) GetJobByID(ctx context.Context, jobID string) (*video.ProcessingJob, error) {
+	row, err := r.queries.GetJobByID(ctx, toPgUUID(jobID))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get job by id via sqlc: %w", err)
+	}
+	return toDomainJob(row), nil
+}
+
+func toDomainJob(row sqlc.ProcessingJob) *video.ProcessingJob {
+	var startedAt, finishedAt *time.Time
+	if row.StartedAt.Valid {
+		t := row.StartedAt.Time
+		startedAt = &t
+	}
+	if row.FinishedAt.Valid {
+		t := row.FinishedAt.Time
+		finishedAt = &t
+	}
+
+	return &video.ProcessingJob{
+		ID:           fromPgUUID(row.ID),
+		VideoID:      fromPgUUID(row.VideoID),
+		WorkerID:     fromPgText(row.WorkerID),
+		Status:       video.JobStatus(row.Status),
+		AttemptCount: int(row.AttemptCount),
+		MaxAttempts:  int(row.MaxAttempts),
+		ErrorMessage: fromPgText(row.ErrorMessage),
+		StartedAt:    startedAt,
+		FinishedAt:   finishedAt,
+		CreatedAt:    row.CreatedAt.Time,
+	}
+}
+
+// ---------------------------------------------------------
+// RenditionRepository Implementation
+// ---------------------------------------------------------
+
+func (r *PostgresRepo) SaveRenditions(ctx context.Context, videoID string, renditions []video.Rendition) error {
+	pgVideoID := toPgUUID(videoID)
+	for _, rend := range renditions {
+		params := sqlc.UpsertRenditionParams{
+			VideoID:          pgVideoID,
+			ResolutionName:   rend.ResolutionName,
+			Width:            int32(rend.Width),
+			Height:           int32(rend.Height),
+			VideoBitrateKbps: int32(rend.VideoBitrateKbps),
+			AudioBitrateKbps: int32(rend.AudioBitrateKbps),
+			PlaylistPath:     rend.PlaylistPath,
+			SegmentCount:     int32(rend.SegmentCount),
+			Status:           sqlc.RenditionStatus(rend.Status),
+		}
+		if _, err := r.queries.UpsertRendition(ctx, params); err != nil {
+			return fmt.Errorf("failed to upsert rendition %s via sqlc: %w", rend.ResolutionName, err)
+		}
+	}
+	return nil
+}
+
+func (r *PostgresRepo) ListRenditions(ctx context.Context, videoID string) ([]video.Rendition, error) {
+	rows, err := r.queries.ListRenditionsByVideoID(ctx, toPgUUID(videoID))
+	if err != nil {
+		return nil, fmt.Errorf("failed to list renditions via sqlc: %w", err)
+	}
+
+	result := make([]video.Rendition, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, video.Rendition{
+			ResolutionName:   row.ResolutionName,
+			Width:            int(row.Width),
+			Height:           int(row.Height),
+			VideoBitrateKbps: int(row.VideoBitrateKbps),
+			AudioBitrateKbps: int(row.AudioBitrateKbps),
+			PlaylistPath:     row.PlaylistPath,
+			SegmentCount:     int(row.SegmentCount),
+			Status:           string(row.Status),
+		})
+	}
+	return result, nil
 }

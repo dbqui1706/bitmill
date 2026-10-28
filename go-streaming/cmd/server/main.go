@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	videoApp "quidb.dev/go-streaming/internal/application/video"
 	"quidb.dev/go-streaming/internal/config"
+	"quidb.dev/go-streaming/internal/infrastructure/queue"
 	"quidb.dev/go-streaming/internal/infrastructure/repository"
 	"quidb.dev/go-streaming/internal/infrastructure/storage"
 	"quidb.dev/go-streaming/internal/infrastructure/transcoder"
@@ -86,6 +87,25 @@ func main() {
 	// 5. [Application Services]
 	legacyService := videoApp.NewService(pgRepo, ffmpegTranscoder, hlsDir, cfg.Server.BaseURL, log)
 	uploadService := videoApp.NewUploadService(pgRepo, pgRepo, r2Adapter, cfg.Storage.R2.RawBucket, 2*time.Hour, log)
+
+	// 5.1 [RabbitMQ Event Dispatcher - Milestone 4]
+	queueCfg := queue.RabbitMQConfig{
+		URI:           cfg.RabbitMQ.URI,
+		Exchange:      cfg.RabbitMQ.Exchange,
+		Queue:         cfg.RabbitMQ.Queue,
+		RoutingKey:    cfg.RabbitMQ.RoutingKey,
+		DLX:           cfg.RabbitMQ.DLX,
+		DLQ:           cfg.RabbitMQ.DLQ,
+		PrefetchCount: 1,
+	}
+	rabbitMQAdapter, err := queue.NewRabbitMQAdapter(queueCfg, log)
+	if err != nil {
+		log.Warn("RabbitMQ connection failed: %v. Transcode events will not be dispatched.", err)
+	} else {
+		defer rabbitMQAdapter.Close()
+		uploadService.SetTranscodingQueue(pgRepo, rabbitMQAdapter, cfg.Storage.R2.ProcessedBucket)
+		log.Info("RabbitMQ Event Dispatcher wired to UploadService (Exchange: %s)", cfg.RabbitMQ.Exchange)
+	}
 
 	// Scan available test videos
 	registerAvailableVideos(legacyService, rootDir, log)

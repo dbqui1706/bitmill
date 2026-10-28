@@ -13,16 +13,27 @@ import (
 type Querier interface {
 	CreateOrUpdateUploadSession(ctx context.Context, arg CreateOrUpdateUploadSessionParams) error
 	CreateOrUpdateVideo(ctx context.Context, arg CreateOrUpdateVideoParams) error
+	CreateProcessingJob(ctx context.Context, arg CreateProcessingJobParams) (ProcessingJob, error)
+	GetActiveJobByVideoID(ctx context.Context, videoID pgtype.UUID) (ProcessingJob, error)
 	GetActiveUploadSessionByFingerprint(ctx context.Context, fileFingerprint pgtype.Text) (GetActiveUploadSessionByFingerprintRow, error)
 	GetCompletedPartsBySessionID(ctx context.Context, uploadSessionID pgtype.UUID) ([]GetCompletedPartsBySessionIDRow, error)
+	GetJobByID(ctx context.Context, id pgtype.UUID) (ProcessingJob, error)
 	GetUploadSessionByVideoID(ctx context.Context, videoID pgtype.UUID) (GetUploadSessionByVideoIDRow, error)
 	GetVideoByID(ctx context.Context, id pgtype.UUID) (Video, error)
 	ListExpiredUploadSessions(ctx context.Context, expiresAt pgtype.Timestamptz) ([]ListExpiredUploadSessionsRow, error)
+	ListRenditionsByVideoID(ctx context.Context, videoID pgtype.UUID) ([]VideoRendition, error)
 	ListVideos(ctx context.Context) ([]Video, error)
+	MarkVideoFailed(ctx context.Context, id pgtype.UUID) error
+	MarkVideoReady(ctx context.Context, arg MarkVideoReadyParams) error
 	RecordPartUploaded(ctx context.Context, arg RecordPartUploadedParams) error
+	UpdateJobCompleted(ctx context.Context, id pgtype.UUID) error
+	UpdateJobDLQ(ctx context.Context, arg UpdateJobDLQParams) error
+	UpdateJobFailed(ctx context.Context, arg UpdateJobFailedParams) error
+	UpdateJobProcessing(ctx context.Context, arg UpdateJobProcessingParams) error
 	UpdateUploadSessionStatus(ctx context.Context, arg UpdateUploadSessionStatusParams) error
 	UpdateVideoStatus(ctx context.Context, arg UpdateVideoStatusParams) error
 	UpdateVideoStatusIf(ctx context.Context, arg UpdateVideoStatusIfParams) (int64, error)
+	UpsertRendition(ctx context.Context, arg UpsertRenditionParams) (VideoRendition, error)
 }
 
 var _ Querier = (*Queries)(nil)

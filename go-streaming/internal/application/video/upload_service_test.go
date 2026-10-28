@@ -73,6 +73,15 @@ func (m *mockStorageProvider) GetObjectSize(ctx context.Context, bucket, objectK
 func (m *mockStorageProvider) GetDownloadURL(ctx context.Context, bucket, objectKey string, expiry time.Duration) (string, error) {
 	return "https://r2.mock/download", nil
 }
+func (m *mockStorageProvider) DownloadToFile(ctx context.Context, bucket, objectKey, localPath string) error {
+	return nil
+}
+func (m *mockStorageProvider) UploadFile(ctx context.Context, localPath, bucket, objectKey, contentType, cacheControl string) error {
+	return nil
+}
+func (m *mockStorageProvider) UploadDirectory(ctx context.Context, localDir, bucket, prefix string) error {
+	return nil
+}
 
 type mockVideoRepo struct {
 	videos map[string]*video.Video
@@ -117,6 +126,23 @@ func (m *mockVideoRepo) UpdateStatusIf(ctx context.Context, id string, newStatus
 		return true, nil
 	}
 	return false, nil
+}
+func (m *mockVideoRepo) MarkReady(ctx context.Context, id, masterPlaylistURL, thumbnailURL string, durationSeconds float64) error {
+	v, ok := m.videos[id]
+	if !ok {
+		return errors.New("not found")
+	}
+	v.MarkReady(masterPlaylistURL, durationSeconds)
+	v.ThumbnailURL = thumbnailURL
+	return nil
+}
+func (m *mockVideoRepo) MarkFailed(ctx context.Context, id string) error {
+	v, ok := m.videos[id]
+	if !ok {
+		return errors.New("not found")
+	}
+	v.MarkFailed()
+	return nil
 }
 
 type mockSessionRepo struct {

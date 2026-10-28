@@ -144,6 +144,45 @@ func (q *Queries) ListVideos(ctx context.Context) ([]Video, error) {
 	return items, nil
 }
 
+const markVideoFailed = `-- name: MarkVideoFailed :exec
+UPDATE videos
+SET status = 'FAILED',
+    updated_at = NOW()
+WHERE id = $1
+`
+
+func (q *Queries) MarkVideoFailed(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, markVideoFailed, id)
+	return err
+}
+
+const markVideoReady = `-- name: MarkVideoReady :exec
+UPDATE videos
+SET status = 'READY',
+    master_playlist_url = $2,
+    duration_seconds = $3,
+    thumbnail_url = $4,
+    updated_at = NOW()
+WHERE id = $1
+`
+
+type MarkVideoReadyParams struct {
+	ID                pgtype.UUID    `json:"id"`
+	MasterPlaylistUrl pgtype.Text    `json:"master_playlist_url"`
+	DurationSeconds   pgtype.Numeric `json:"duration_seconds"`
+	ThumbnailUrl      pgtype.Text    `json:"thumbnail_url"`
+}
+
+func (q *Queries) MarkVideoReady(ctx context.Context, arg MarkVideoReadyParams) error {
+	_, err := q.db.Exec(ctx, markVideoReady,
+		arg.ID,
+		arg.MasterPlaylistUrl,
+		arg.DurationSeconds,
+		arg.ThumbnailUrl,
+	)
+	return err
+}
+
 const updateVideoStatus = `-- name: UpdateVideoStatus :exec
 UPDATE videos 
 SET status = $1, updated_at = NOW() 
