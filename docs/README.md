@@ -27,7 +27,8 @@ docs/
 │
 └── operations/            # [PILLAR 3: OPERATIONS & RUNBOOKS]
     ├── local-setup.md     # Local development setup, Docker, environment variables, Makefile
-    └── runbook.md         # Troubleshooting playbooks, DLQ remediation, R2 storage cleanup
+    ├── runbook.md         # Troubleshooting playbooks, DLQ remediation, R2 storage cleanup
+    └── observability-monitoring.md # Prometheus, Loki, Promtail, Grafana PLG stack guide
 ```
 
 ---
@@ -44,3 +45,4 @@ docs/
 | **Pillar 2: Architecture** | [api-contracts.md](file:///Users/quidb/Working/projects/bitmill/docs/architecture/api-contracts.md) | REST API v1 contracts under `/api/v1/videos` with JSON request/response schemas. |
 | **Pillar 3: Operations** | [local-setup.md](file:///Users/quidb/Working/projects/bitmill/docs/operations/local-setup.md) | Local development setup, environment variables, and `make` automation targets. |
 | **Pillar 3: Operations** | [runbook.md](file:///Users/quidb/Working/projects/bitmill/docs/operations/runbook.md) | Incident diagnosis, DLQ inspection, Cloudflare R2 orphan cleanup, and database queries. |
+| **Pillar 3: Operations** | [observability-monitoring.md](file:///Users/quidb/Working/projects/bitmill/docs/operations/observability-monitoring.md) | Complete PLG monitoring guide (Prometheus, Loki, Promtail, Grafana). |

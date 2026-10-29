@@ -6,9 +6,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"quidb.dev/go-streaming/internal/domain/video"
 	"quidb.dev/go-streaming/pkg/logger"
+	"quidb.dev/go-streaming/pkg/metrics"
 )
 
 // WorkerService orchestrates the asynchronous video transcoding pipeline
@@ -71,6 +73,7 @@ func (s *WorkerService) StartConsumer(ctx context.Context) error {
 
 // ProcessJob executes the end-to-end media transcoding workflow for a single job
 func (s *WorkerService) ProcessJob(ctx context.Context, msg *video.TranscodeJobMessage) error {
+	startTime := time.Now()
 	s.log.Info("Executing transcode job: VideoID=%s, JobID=%s, Attempt=%d/%d",
 		msg.VideoID, msg.JobID, msg.AttemptCount, msg.MaxAttempts)
 
@@ -195,6 +198,10 @@ func (s *WorkerService) ProcessJob(ctx context.Context, msg *video.TranscodeJobM
 	if s.jobRepo != nil && msg.JobID != "" {
 		_ = s.jobRepo.MarkJobCompleted(ctx, msg.JobID)
 	}
+
+	// Record Prometheus Telemetry Metrics
+	metrics.TranscodeJobsTotal.WithLabelValues("success", fmt.Sprintf("%dp", meta.Height)).Inc()
+	metrics.TranscodeDuration.WithLabelValues(fmt.Sprintf("%dp", meta.Height)).Observe(time.Since(startTime).Seconds())
 
 	s.log.Info("Transcoding pipeline completed successfully for VideoID=%s! Master URL: %s", msg.VideoID, masterURL)
 	return nil
