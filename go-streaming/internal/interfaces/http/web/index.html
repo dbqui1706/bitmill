@@ -276,6 +276,224 @@
       padding: 1.5rem;
     }
     pre { background: #0f172a; padding: 1rem; border-radius: 8px; overflow-x: auto; font-size: 0.85rem; color: #e2e8f0; }
+
+    /* PIPELINE SIMULATOR COMPONENT */
+    .sim-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+    }
+    .sim-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+    .sim-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .sim-controls {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .sim-btn {
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #e2e8f0;
+      padding: 0.4rem 0.8rem;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      transition: all 0.15s ease;
+    }
+    .sim-btn:hover:not(:disabled) {
+      background: #334155;
+      border-color: #64748b;
+      color: white;
+    }
+    .sim-btn.btn-active {
+      background: #0284c7;
+      border-color: #38bdf8;
+      color: white;
+    }
+    .sim-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    /* Track containing 5 stages */
+    .sim-track {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 0.75rem;
+      position: relative;
+      margin-bottom: 1rem;
+    }
+    @media (max-width: 900px) {
+      .sim-track { grid-template-columns: 1fr; }
+    }
+    .sim-node {
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      border-radius: 10px;
+      padding: 1rem 0.75rem;
+      text-align: center;
+      position: relative;
+      transition: all 0.25s ease;
+      cursor: pointer;
+      user-select: none;
+    }
+    .sim-node:hover {
+      border-color: #38bdf8;
+      background: #131d33;
+      transform: translateY(-2px);
+    }
+    .sim-node.active {
+      border-color: #38bdf8;
+      background: rgba(14, 165, 233, 0.12);
+      box-shadow: 0 0 15px rgba(56, 189, 248, 0.3);
+      transform: translateY(-2px);
+    }
+    .sim-node.done {
+      border-color: #22c55e;
+      background: rgba(34, 197, 94, 0.08);
+    }
+    .sim-node-icon {
+      font-size: 1.8rem;
+      margin-bottom: 0.35rem;
+      line-height: 1;
+    }
+    .sim-node-step {
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    .sim-node-title {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--text);
+      margin: 0.2rem 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .sim-node-sub {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      line-height: 1.3;
+      height: 2.6em;
+      overflow: hidden;
+    }
+    .sim-node-badge {
+      display: inline-block;
+      margin-top: 0.5rem;
+      font-size: 0.65rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: 9999px;
+      font-weight: 700;
+      background: #1e293b;
+      color: #94a3b8;
+      border: 1px solid #334155;
+    }
+    .sim-node.active .sim-node-badge {
+      background: #0369a1;
+      color: #e0f2fe;
+      border-color: #38bdf8;
+      animation: pulse 1s infinite alternate;
+    }
+    .sim-node.done .sim-node-badge {
+      background: #14532d;
+      color: #bbf7d0;
+      border-color: #22c55e;
+    }
+
+    /* Progress bar connecting stages */
+    .sim-progress-track {
+      height: 4px;
+      background: #1e293b;
+      border-radius: 2px;
+      margin-bottom: 1.25rem;
+      overflow: hidden;
+    }
+    .sim-progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #38bdf8, #22c55e);
+      border-radius: 2px;
+      transition: width 0.35s ease;
+    }
+
+    /* Inspector / Explanation Drawer */
+    .sim-inspector {
+      background: #090d16;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 1.25rem;
+      display: grid;
+      grid-template-columns: 1.1fr 1.9fr;
+      gap: 1.25rem;
+    }
+    @media (max-width: 800px) {
+      .sim-inspector { grid-template-columns: 1fr; }
+    }
+    .sim-inspector-left {
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+    .sim-inspector-right {
+      border-left: 1px solid #1e293b;
+      padding-left: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    @media (max-width: 800px) {
+      .sim-inspector-right { border-left: none; padding-left: 0; border-top: 1px solid #1e293b; padding-top: 1rem; }
+    }
+    .sim-prop-group { margin-bottom: 0.25rem; }
+    .sim-prop-label { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700; margin-bottom: 0.2rem; }
+    .sim-prop-val { font-size: 0.88rem; color: #f1f5f9; font-weight: 500; }
+    .sim-why-box {
+      background: rgba(56, 189, 248, 0.08);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      border-radius: 6px;
+      padding: 0.75rem;
+      font-size: 0.82rem;
+      line-height: 1.5;
+      color: #bae6fd;
+    }
+    .sim-code-box {
+      background: #030712;
+      border: 1px solid #1f2937;
+      border-radius: 6px;
+      padding: 0.75rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.76rem;
+      color: #6ee7b7;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      margin: 0;
+    }
   </style>
 </head>
 <body>
@@ -289,6 +507,107 @@
         <span class="badge-protocol">RFC-001 Native S3 Multipart</span>
       </div>
     </header>
+
+    <!-- ARCHITECTURE PIPELINE SIMULATOR -->
+    <div class="sim-card">
+      <div class="sim-header">
+        <div class="sim-title">
+          <span>📊 Mô Phỏng Luồng Kiến Trúc: Ingestion ➔ RabbitMQ ➔ Docker FFmpeg ➔ HLS CDN</span>
+        </div>
+        <div class="sim-controls">
+          <button id="sim-btn-play" class="sim-btn btn-active" onclick="toggleAutoSimulate()">▶️ Chạy Mô Phỏng</button>
+          <button id="sim-btn-prev" class="sim-btn" onclick="prevSimStep()" disabled>⏮️ Trước</button>
+          <button id="sim-btn-next" class="sim-btn" onclick="nextSimStep()">Kế tiếp ⏭️</button>
+          <button id="sim-btn-reset" class="sim-btn" onclick="resetSim()">🔄 Đặt lại</button>
+        </div>
+      </div>
+
+      <!-- Connecting Progress Line -->
+      <div class="sim-progress-track">
+        <div class="sim-progress-fill" id="sim-progress-fill"></div>
+      </div>
+
+      <!-- 5 Architecture Nodes -->
+      <div class="sim-track" id="sim-track">
+        <!-- Node 1 -->
+        <div class="sim-node" id="sim-node-1" onclick="selectSimStep(1)">
+          <div class="sim-node-icon">📱</div>
+          <div class="sim-node-step">Bước 1</div>
+          <div class="sim-node-title">1. Client Ingest</div>
+          <div class="sim-node-sub">Direct S3 Multipart (Zero API Proxy)</div>
+          <span class="sim-node-badge" id="sim-badge-1">SẴN SÀNG</span>
+        </div>
+
+        <!-- Node 2 -->
+        <div class="sim-node" id="sim-node-2" onclick="selectSimStep(2)">
+          <div class="sim-node-icon">☁️</div>
+          <div class="sim-node-step">Bước 2</div>
+          <div class="sim-node-title">2. Cloudflare R2</div>
+          <div class="sim-node-sub">Raw Bucket ($0 Egress Storage)</div>
+          <span class="sim-node-badge" id="sim-badge-2">CHỜ RAW FILE</span>
+        </div>
+
+        <!-- Node 3 -->
+        <div class="sim-node" id="sim-node-3" onclick="selectSimStep(3)">
+          <div class="sim-node-icon">📬</div>
+          <div class="sim-node-step">Bước 3</div>
+          <div class="sim-node-title">3. RabbitMQ Queue</div>
+          <div class="sim-node-sub">Backpressure Buffer (prefetch=1)</div>
+          <span class="sim-node-badge" id="sim-badge-3">CHỜ DISPATCH</span>
+        </div>
+
+        <!-- Node 4 -->
+        <div class="sim-node" id="sim-node-4" onclick="selectSimStep(4)">
+          <div class="sim-node-icon">⚙️</div>
+          <div class="sim-node-step">Bước 4</div>
+          <div class="sim-node-title">4. Worker + FFmpeg</div>
+          <div class="sim-node-sub">Scratch Disk + Docker Engine</div>
+          <span class="sim-node-badge" id="sim-badge-4">CHỜ TRANSCODE</span>
+        </div>
+
+        <!-- Node 5 -->
+        <div class="sim-node" id="sim-node-5" onclick="selectSimStep(5)">
+          <div class="sim-node-icon">🌐</div>
+          <div class="sim-node-step">Bước 5</div>
+          <div class="sim-node-title">5. Processed CDN</div>
+          <div class="sim-node-sub">HLS ABR Streams & Poster Ready</div>
+          <span class="sim-node-badge" id="sim-badge-5">CHỜ HOÀN TẤT</span>
+        </div>
+      </div>
+
+      <!-- Live Interactive Technical Inspector Panel -->
+      <div class="sim-inspector" id="sim-inspector">
+        <div class="sim-inspector-left">
+          <div class="sim-prop-group">
+            <div class="sim-prop-label">Thành phần kiến trúc</div>
+            <div class="sim-prop-val" id="sim-detail-component">Browser / Client App</div>
+          </div>
+          <div class="sim-prop-group">
+            <div class="sim-prop-label">Công nghệ cốt lõi</div>
+            <div class="sim-prop-val" id="sim-detail-tech" style="color: var(--cyan);">S3 Presigned URLs + Adaptive Chunking (10-20MB)</div>
+          </div>
+          <div class="sim-prop-group">
+            <div class="sim-prop-label">State Machine Transition</div>
+            <div class="sim-prop-val" id="sim-detail-state"><span class="badge badge-PENDING_UPLOAD">PENDING_UPLOAD</span> ➔ <span class="badge badge-UPLOADED">UPLOADED</span></div>
+          </div>
+          <div class="sim-why-box" id="sim-detail-why">
+            <strong>💡 Tại sao thiết kế như vậy?</strong><br>
+            <span>Giải quyết thắt cổ chai băng thông API Server...</span>
+          </div>
+        </div>
+
+        <div class="sim-inspector-right">
+          <div class="sim-prop-group">
+            <div class="sim-prop-label">Mô tả cơ chế hoạt động</div>
+            <div class="sim-prop-val" id="sim-detail-desc" style="font-size: 0.85rem; line-height: 1.5; color: #cbd5e1;"></div>
+          </div>
+          <div class="sim-prop-group" style="margin-top: 0.5rem;">
+            <div class="sim-prop-label">Dữ liệu luân chuyển / Code thực thi</div>
+            <pre class="sim-code-box" id="sim-detail-code"></pre>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- SECTION 1: RESUMABLE MULTIPART UPLOADER -->
     <div class="card">
@@ -403,6 +722,226 @@
   </div>
 
   <script>
+    // ==========================================
+    // PIPELINE SIMULATION ENGINE
+    // ==========================================
+    const simSteps = [
+      {
+        step: 1,
+        title: "1. Client Direct Ingestion",
+        component: "📱 Trình duyệt Client / Web Studio",
+        tech: "RFC-001 Native S3 Multipart Upload (Chunk 10MB - 20MB)",
+        stateHtml: '<span class="badge badge-PENDING_UPLOAD">PENDING_UPLOAD</span>',
+        activeBadge: "ĐANG ĐẨY CHUNKS",
+        doneBadge: "CHUNKS HOÀN TẤT",
+        idleBadge: "SẴN SÀNG",
+        why: "Giải quyết triệt để thắt cổ chai máy chủ API: Client upload thẳng từng chunk lên Cloudflare R2 qua Presigned PUT URLs độc lập. Băng thông API tiêu thụ = 0 MB/s, máy chủ chỉ cấp token (độ trễ dưới 10ms).",
+        desc: "Trình duyệt cắt file video raw thành mảng chunks (10MB hoặc 20MB tùy dung lượng). Gửi đồng thời qua HTTP PUT có gắn ETag. Người dùng có thể tạm dừng, tiếp tục hoặc khôi phục phiên upload mà không mất dữ liệu.",
+        code: `// RFC-001 Zero-Bandwidth Direct Upload
+const chunkBlob = file.slice(startByte, endByte);
+const r2Res = await fetch(presignedUploadUrl, {
+  method: 'PUT',
+  body: chunkBlob,
+  headers: { 'Content-Type': 'application/octet-stream' }
+});
+const etag = r2Res.headers.get('ETag'); // Thu thập ETag cho từng chunk`
+      },
+      {
+        step: 2,
+        title: "2. Cloudflare R2 Raw Storage",
+        component: "☁️ Object Storage Bucket (bitmill-raw-videos)",
+        tech: "Cloudflare R2 (S3-Compatible API) • $0 Egress Fees",
+        stateHtml: '<span class="badge badge-UPLOADED">UPLOADED</span>',
+        activeBadge: "GHÉP FILE MULTIPART",
+        doneBadge: "RAW READY (ETag)",
+        idleBadge: "CHỜ RAW FILE",
+        why: "Cloudflare R2 hoàn toàn miễn phí băng thông chiều tải ra ($0 Egress Fees). Khi Transcoding Worker kéo file video raw 4K/1080p hàng chục GB về giải mã, chi phí hạ tầng mạng = $0 (khác biệt hoàn toàn so với chi phí đắt đỏ của AWS S3).",
+        desc: "Sau khi upload đủ 100% chunks, Client gọi API CompleteMultipartUpload. R2 tự động ráp nối các parts thành một đối tượng video hoàn chỉnh duy nhất tại 'raw/{video_id}.mp4' với ETag toàn vẹn.",
+        code: `// Ghép nối chunks trên R2
+POST /api/v1/videos/:id/complete-upload
+{
+  "parts": [
+    { "part_number": 1, "etag": "\"c4ca4238a0b923820dcc509a6f75849b\"" },
+    { "part_number": 2, "etag": "\"c81e728d9d4c2f636f067f89cc14862c\"" }
+  ]
+}
+-> R2 trả về status 200 OK
+-> Trạng thái Video chuyển sang: UPLOADED`
+      },
+      {
+        step: 3,
+        title: "3. RabbitMQ Job Queue & Buffer",
+        component: "📬 Message Broker (RabbitMQ Clustering)",
+        tech: "Exchange: bitmill.video.events • Queue: video.transcoding.jobs • prefetch=1",
+        stateHtml: '<span class="badge badge-PROCESSING">QUEUED / DISPATCHING</span>',
+        activeBadge: "BUFFER & DISPATCH",
+        doneBadge: "MESSAGE DELIVERED",
+        idleBadge: "CHỜ DISPATCH",
+        why: "Đệm chịu tải (Backpressure Protection): Giải mã video ngốn 100% CPU. Nếu 1000 người cùng upload video mà chạy FFmpeg ngay lập tức, server sẽ cháy nổ / sập nguồn (OOM). RabbitMQ giữ hàng đợi an toàn; với 'prefetch_count=1', mỗi Worker chỉ nhận đúng 1 job tại một thời điểm.",
+        desc: "API Server phát sự kiện 'video.uploaded' vào Exchange. Exchange định tuyến message tới Queue transcoding bền vững (durable). Nếu worker gặp sự cố chưa kịp ACK, message sẽ tự động requeue hoặc chuyển tới Dead Letter Queue (DLQ) sau 3 lần retry.",
+        code: `// RabbitMQ Task Contract (IoC)
+type TranscodeJobPayload struct {
+    JobID       string \`json:"job_id"\`
+    VideoID     string \`json:"video_id"\`
+    RawS3Key    string \`json:"raw_s3_key"\`
+    RetryCount  int    \`json:"retry_count"\`
+}
+// Worker thiết lập QoS bảo vệ CPU:
+ch.Qos(1, 0, false) // prefetch_count = 1`
+      },
+      {
+        step: 4,
+        title: "4. Transcoding Worker Daemon + Docker FFmpeg",
+        component: "⚙️ Standalone Worker Daemon (cmd/worker)",
+        tech: "Local Scratch Disk (/tmp) • Container mwader/static-ffmpeg • Dynamic ABR Ladder",
+        stateHtml: '<span class="badge badge-PROCESSING">PROCESSING</span>',
+        activeBadge: "ĐANG TRANSCODE HLS",
+        doneBadge: "HLS RENDERED",
+        idleBadge: "CHỜ TRANSCODE",
+        why: "Tại sao bắt buộc phải download video về ổ cứng cục bộ (/tmp) mà không stream thẳng? Vì FFmpeg cần seek frame I/P/B hai chiều ngẫu nhiên để tính toán motion vectors và phân rã đồng thời nhiều luồng HLS (.ts chunks). Stream qua HTTP vừa chậm vừa dễ đứt kết nối giữa chừng.",
+        desc: "Worker tải video raw từ R2 về thư mục tạm /tmp/bitmill-worker/:job_id/. Docker FFmpeg phân tích độ phân giải gốc, tự động cắt tỉa thang ABR (1080p, 720p, 480p, 360p - không upscale nếu video gốc nhỏ hơn), cắt lát Closed GOP 2 giây và trích xuất poster thumbnail.",
+        code: `// Worker Scratch Disk & Dynamic ABR FFmpeg
+docker run --rm -v /tmp/bitmill-worker/job-123:/workspace mwader/static-ffmpeg:latest \\
+  -i /workspace/input.mp4 \\
+  -filter_complex "[0:v]split=3[v1][v2][v3]; [v1]scale=w=1920:h=1080[v1out]; [v2]scale=w=1280:h=720[v2out]; [v3]scale=w=854:h=480[v3out]" \\
+  -map "[v1out]" -c:v:0 libx264 -b:v:0 5000k \\
+  -map "[v2out]" -c:v:1 libx264 -b:v:1 2800k \\
+  -map "[v3out]" -c:v:2 libx264 -b:v:2 1400k \\
+  -hls_time 2 -hls_playlist_type vod -master_pl_name master.m3u8 ...`
+      },
+      {
+        step: 5,
+        title: "5. Processed CDN & HLS Adaptive Playback",
+        component: "🌐 Cloudflare R2 (Processed) + HLS.js Client Player",
+        tech: "bitmill-processed-videos • 16-Worker Parallel Upload Pool • RabbitMQ BasicAck",
+        stateHtml: '<span class="badge badge-READY">READY</span>',
+        activeBadge: "UPLOAD PROCESSED CDN",
+        doneBadge: "SẴN SÀNG PHÁT HLS",
+        idleBadge: "CHỜ HOÀN TẤT",
+        why: "Tính toàn vẹn tuyệt đối (Zero Data Loss): Worker sử dụng pool 16 goroutines đẩy hàng trăm file .ts và .m3u8 lên R2 trong vài giây. Message RabbitMQ CHỈ ĐƯỢC ACK khi tất cả file đã nằm an toàn trên Cloudflare R2 và DB đã cập nhật READY. Sau đó dọn dẹp sạch sẽ ổ cứng /tmp.",
+        desc: "Khách hàng trên toàn cầu có thể phát video qua chuẩn HLS Adaptive Bitrate. Trình phát tự động chuyển đổi chất lượng (1080p -> 720p -> 480p) theo tốc độ mạng của người dùng mà không bao giờ bị giật lag.",
+        code: `// Parallel R2 Upload & Transactional Completion
+err := r2Adapter.UploadDirParallel(ctx, scratchDir+"/output", "processed/"+videoID, 16)
+if err == nil {
+    videoRepo.UpdateStatus(ctx, videoID, "READY")
+    delivery.Ack(false) // Báo RabbitMQ xóa job an toàn!
+    os.RemoveAll(scratchDir) // Dọn sạch ổ cứng
+}`
+      }
+    ];
+
+    let currentSimStep = 1;
+    let simTimer = null;
+    let isSimPlaying = false;
+
+    function renderSimStep(stepNumber) {
+      currentSimStep = stepNumber;
+      const data = simSteps[stepNumber - 1];
+
+      // Update progress bar
+      const percent = ((stepNumber - 1) / (simSteps.length - 1)) * 100;
+      const progressEl = document.getElementById('sim-progress-fill');
+      if (progressEl) progressEl.style.width = percent + '%';
+
+      // Update all 5 nodes UI
+      for (let i = 1; i <= 5; i++) {
+        const nodeEl = document.getElementById(`sim-node-${i}`);
+        const badgeEl = document.getElementById(`sim-badge-${i}`);
+        const stepData = simSteps[i - 1];
+
+        if (!nodeEl || !badgeEl) continue;
+
+        nodeEl.classList.remove('active', 'done');
+        if (i < stepNumber) {
+          nodeEl.classList.add('done');
+          badgeEl.innerText = stepData.doneBadge;
+        } else if (i === stepNumber) {
+          nodeEl.classList.add('active');
+          badgeEl.innerText = stepData.activeBadge;
+        } else {
+          badgeEl.innerText = stepData.idleBadge;
+        }
+      }
+
+      // Update Inspector Panel
+      const compEl = document.getElementById('sim-detail-component');
+      const techEl = document.getElementById('sim-detail-tech');
+      const stateEl = document.getElementById('sim-detail-state');
+      const whyEl = document.getElementById('sim-detail-why');
+      const descEl = document.getElementById('sim-detail-desc');
+      const codeEl = document.getElementById('sim-detail-code');
+
+      if (compEl) compEl.innerText = data.component;
+      if (techEl) techEl.innerText = data.tech;
+      if (stateEl) stateEl.innerHTML = data.stateHtml;
+      if (whyEl) whyEl.innerHTML = `<strong>💡 Tại sao thiết kế như vậy?</strong><br><span>${data.why}</span>`;
+      if (descEl) descEl.innerText = data.desc;
+      if (codeEl) codeEl.innerText = data.code;
+
+      // Update Prev / Next Buttons
+      const prevBtn = document.getElementById('sim-btn-prev');
+      const nextBtn = document.getElementById('sim-btn-next');
+      if (prevBtn) prevBtn.disabled = (stepNumber === 1);
+      if (nextBtn) nextBtn.disabled = (stepNumber === 5);
+    }
+
+    function selectSimStep(stepNumber) {
+      if (isSimPlaying) {
+        toggleAutoSimulate(); // pause auto-play on manual click
+      }
+      renderSimStep(stepNumber);
+    }
+
+    function nextSimStep() {
+      if (currentSimStep < 5) {
+        renderSimStep(currentSimStep + 1);
+      }
+    }
+
+    function prevSimStep() {
+      if (currentSimStep > 1) {
+        renderSimStep(currentSimStep - 1);
+      }
+    }
+
+    function resetSim() {
+      if (isSimPlaying) toggleAutoSimulate();
+      renderSimStep(1);
+    }
+
+    function toggleAutoSimulate() {
+      const btn = document.getElementById('sim-btn-play');
+      if (isSimPlaying) {
+        clearInterval(simTimer);
+        simTimer = null;
+        isSimPlaying = false;
+        if (btn) {
+          btn.innerHTML = '▶️ Chạy Mô Phỏng';
+          btn.classList.add('btn-active');
+        }
+      } else {
+        isSimPlaying = true;
+        if (btn) {
+          btn.innerHTML = '⏸️ Tạm Dừng';
+          btn.classList.remove('btn-active');
+        }
+        
+        simTimer = setInterval(() => {
+          if (currentSimStep >= 5) {
+            renderSimStep(1);
+          } else {
+            renderSimStep(currentSimStep + 1);
+          }
+        }, 3200);
+      }
+    }
+
+    // Initialize Simulator at step 1 on load
+    document.addEventListener('DOMContentLoaded', () => {
+      renderSimStep(1);
+    });
+    renderSimStep(1);
+
     // Global state
     let selectedFile = null;
     let activeSession = null;
@@ -477,6 +1016,7 @@
 
       isPaused = false;
       isAborted = false;
+      renderSimStep(1); // Bước 1: Client Ingest
       document.getElementById('btn-start').style.display = 'none';
       document.getElementById('btn-pause').style.display = 'inline-flex';
       document.getElementById('btn-abort').style.display = 'inline-flex';
@@ -684,6 +1224,7 @@
         document.getElementById('progress-percent').innerText = '100%';
         document.getElementById('progress-status-text').innerText = '🎉 Tải lên & Ghép file thành công 100%!';
         log(`Ghép file thành công trên Cloudflare R2! Video sẵn sàng chuyển sang bước Transcoding.`, 'info');
+        renderSimStep(2); // Kích hoạt node R2 Raw Ready
 
         document.getElementById('btn-pause').style.display = 'none';
         document.getElementById('btn-abort').style.display = 'none';
@@ -791,13 +1332,18 @@
             actionBtn = '<span style="color: var(--red); font-size: 0.85rem;">Lỗi</span>';
           }
 
+          let badgeStep = 1;
+          if (v.status === 'UPLOADED') badgeStep = 2;
+          else if (v.status === 'PROCESSING') badgeStep = 4;
+          else if (v.status === 'READY') badgeStep = 5;
+
           html += `<tr>
             <td>
               <strong>${v.title}</strong><br>
               <code style="color: var(--text-muted); font-size: 0.75rem;">${v.id}</code>
             </td>
             <td>${formatBytes(v.raw_size_bytes || 0)}</td>
-            <td><span class="badge badge-${v.status}">${v.status}</span></td>
+            <td><span class="badge badge-${v.status}" style="cursor: pointer;" title="Bấm để xem bước trong mô phỏng kiến trúc" onclick="selectSimStep(${badgeStep})">${v.status} 🔍</span></td>
             <td>${actionBtn}</td>
           </tr>`;
         });
@@ -811,12 +1357,23 @@
     }
 
     async function triggerTranscode(id) {
-      alert(`Đang gửi lệnh yêu cầu FFmpeg transcode video ${id}...`);
-      await fetch(`/api/videos/${id}/process`, { method: 'POST' });
-      setTimeout(loadVideos, 1000);
+      log(`[Queue] Đang đẩy video ${id} vào RabbitMQ Exchange bitmill.video.events...`);
+      renderSimStep(3); // Bước 3: RabbitMQ Queue
+      setTimeout(() => {
+        log(`[Worker] Worker kéo job từ Queue về /tmp scratch disk và bắt đầu Docker FFmpeg...`);
+        renderSimStep(4); // Bước 4: Worker + Docker FFmpeg
+      }, 1500);
+
+      try {
+        await fetch(`/api/videos/${id}/process`, { method: 'POST' });
+        setTimeout(loadVideos, 2000);
+      } catch (err) {
+        log(`Lỗi gọi process: ${err.message}`, 'err');
+      }
     }
 
     function playHLS(url, title) {
+      renderSimStep(5); // Bước 5: Processed CDN & Playback
       const card = document.getElementById('player-card');
       card.style.display = 'block';
       document.getElementById('now-playing-title').innerText = 'Đang phát: ' + title;
