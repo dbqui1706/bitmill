@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	videoApp "quidb.dev/go-streaming/internal/application/video"
 	"quidb.dev/go-streaming/internal/config"
 	"quidb.dev/go-streaming/internal/infrastructure/queue"
@@ -18,6 +19,7 @@ import (
 	deliveryHTTP "quidb.dev/go-streaming/internal/interfaces/http"
 	deliveryRTMP "quidb.dev/go-streaming/internal/interfaces/rtmp"
 	"quidb.dev/go-streaming/pkg/logger"
+	"quidb.dev/go-streaming/pkg/metrics"
 )
 
 func main() {
@@ -123,6 +125,10 @@ func main() {
 	// 7. [Interfaces Layer - HTTP Gin Engine Port 8080]
 	gin.SetMode(gin.DebugMode)
 	router := gin.Default()
+
+	// 7.1 [Observability Middleware & Prometheus /metrics Endpoint]
+	router.Use(metrics.PrometheusMiddleware())
+	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	// Register Handlers
 	legacyHandler := deliveryHTTP.NewHandler(legacyService, hlsDir, log)

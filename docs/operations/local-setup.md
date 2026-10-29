@@ -46,22 +46,28 @@ Key environment variables:
 All development tasks are automated via `make`:
 
 ```bash
-# 1. Start all infrastructure containers (PostgreSQL & RabbitMQ)
+# 1. Start all infrastructure containers (PostgreSQL, RabbitMQ, Prometheus, Loki, Promtail, Grafana)
 make docker-up
 
-# 2. Apply database migrations via Goose
+# 2. Access Dashboards & Web Studios
+# - Web Studio: http://localhost:8080
+# - Grafana Observability Dashboard: http://localhost:3000 (admin / admin)
+# - RabbitMQ Management: http://localhost:15672 (bitmill_mq / bitmill_mq_password)
+# - Prometheus Scraper: http://localhost:9090
+
+# 3. Apply database migrations via Goose
 make migrate-up
 
-# 3. Check migration status
+# 4. Check migration status
 make migrate-status
 
-# 4. Run unit tests
+# 5. Run unit tests
 make test
 
-# 5. Verify live integration with real Cloudflare R2
+# 6. Verify live integration with real Cloudflare R2
 make test-e2e
 
-# 6. Start the API server locally
-make run
-
+# 7. Start the API server and Transcoding Worker
+make run     # Terminal 1: API Server
+make worker  # Terminal 2: Transcoding Worker Daemon
 ```

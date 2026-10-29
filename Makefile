@@ -73,8 +73,8 @@ worktree-clean: ## Remove worktree directory and branch (usage: make worktree-cl
 	git branch -d feat/$(NAME)
 	@echo "$(GREEN)🧹 Cleaned up worktree .worktrees/$(NAME)$(RESET)"
 
-## 🐳 Infrastructure & Docker
-docker-up: ## Start PostgreSQL and RabbitMQ containers in background
+## 🐳 Infrastructure, Docker & Observability
+docker-up: ## Start all infrastructure containers (Postgres, RabbitMQ, Prometheus, Loki, Promtail, Grafana)
 	docker compose up -d
 
 docker-down: ## Stop all background Docker containers
@@ -85,6 +85,12 @@ docker-logs: ## Tail logs from all Docker containers
 
 docker-ps: ## View status of running Docker containers
 	docker compose ps
+
+obs-up: ## Start Prometheus, Loki, Promtail, and Grafana monitoring stack
+	docker compose up -d prometheus loki promtail grafana
+
+obs-down: ## Stop monitoring stack containers
+	docker compose stop prometheus loki promtail grafana
 
 ## 🗄️ Database Management & Goose Migrations
 migrate-up: ## Run all pending database migrations via Goose
