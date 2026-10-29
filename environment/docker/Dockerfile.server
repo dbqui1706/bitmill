@@ -1,0 +1,43 @@
+# ---------------------------------------------------------
+# STAGE 1: Go Compile & Build Environment
+# ---------------------------------------------------------
+FROM golang:alpine AS builder
+
+WORKDIR /src
+
+RUN apk add --no-cache git ca-certificates tzdata
+
+COPY go-streaming/go.mod go-streaming/go.sum ./
+RUN go mod download && go mod verify
+
+COPY go-streaming/ ./
+
+RUN CGO_ENABLED=0 \
+    go build -trimpath -ldflags="-s -w -extldflags '-static'" \
+    -o /bin/server cmd/server/main.go
+
+# ---------------------------------------------------------
+# STAGE 2: Ultra-Minimal Hardened Production Runner
+# ---------------------------------------------------------
+FROM alpine:3.21 AS runner
+
+RUN apk add --no-cache ca-certificates tzdata wget \
+    && addgroup -g 10001 -S bitmill \
+    && adduser -u 10001 -S bitmill -G bitmill -h /home/bitmill \
+    && mkdir -p /app/logs \
+    && chown -R bitmill:bitmill /app
+
+WORKDIR /app
+
+COPY --chown=10001:10001 --from=builder /bin/server /app/server
+COPY --chown=10001:10001 --from=builder /src/config.yaml /app/config.yaml
+COPY --chown=10001:10001 --from=builder /src/internal/interfaces/http/web /app/web
+
+USER 10001:10001
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget -q -O /dev/null http://127.0.0.1:8080/health || exit 1
+
+ENTRYPOINT ["/app/server"]

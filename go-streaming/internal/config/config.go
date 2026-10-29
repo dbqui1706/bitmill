@@ -32,6 +32,9 @@ type StorageConfig struct {
 }
 
 type TranscoderConfig struct {
+	Type               string `mapstructure:"type" yaml:"type"` // "native" or "docker"
+	FFmpegPath         string `mapstructure:"ffmpeg_path" yaml:"ffmpeg_path"`
+	FFprobePath        string `mapstructure:"ffprobe_path" yaml:"ffprobe_path"`
 	DockerImage        string `mapstructure:"docker_image" yaml:"docker_image"`
 	GOPSize            int    `mapstructure:"gop_size" yaml:"gop_size"`
 	HLSSegmentDuration int    `mapstructure:"hls_segment_duration" yaml:"hls_segment_duration"`
@@ -96,6 +99,9 @@ func LoadConfig(customPaths ...string) (*Config, error) {
 	v.SetDefault("server.base_url", "http://localhost:8080")
 	v.SetDefault("storage.root_dir", "..")
 	v.SetDefault("storage.hls_dir", "../hls_storage")
+	v.SetDefault("transcoder.type", "docker")
+	v.SetDefault("transcoder.ffmpeg_path", "ffmpeg")
+	v.SetDefault("transcoder.ffprobe_path", "ffprobe")
 	v.SetDefault("transcoder.docker_image", "mwader/static-ffmpeg:latest")
 	v.SetDefault("transcoder.gop_size", 60)
 	v.SetDefault("transcoder.hls_segment_duration", 2)
@@ -144,6 +150,41 @@ func LoadConfig(customPaths ...string) (*Config, error) {
 		cfg.Storage.R2.Endpoint = val
 	} else if cfg.Storage.R2.Endpoint == "" && cfg.Storage.R2.AccountID != "" {
 		cfg.Storage.R2.Endpoint = fmt.Sprintf("https://%s.r2.cloudflarestorage.com", cfg.Storage.R2.AccountID)
+	}
+
+	// 4. Overrides for Transcoder, Database, and Queue
+	if val := os.Getenv("TRANSCODER_TYPE"); val != "" {
+		cfg.Transcoder.Type = val
+	}
+	if val := os.Getenv("TRANSCODER_FFMPEG_PATH"); val != "" {
+		cfg.Transcoder.FFmpegPath = val
+	}
+	if val := os.Getenv("TRANSCODER_FFPROBE_PATH"); val != "" {
+		cfg.Transcoder.FFprobePath = val
+	}
+	if val := os.Getenv("DATABASE_HOST"); val != "" {
+		cfg.Database.Host = val
+	}
+	if val := os.Getenv("POSTGRES_HOST"); val != "" && cfg.Database.Host == "localhost" {
+		cfg.Database.Host = val
+	}
+	if val := os.Getenv("DATABASE_PORT"); val != "" {
+		var p int
+		if _, err := fmt.Sscanf(val, "%d", &p); err == nil && p > 0 {
+			cfg.Database.Port = p
+		}
+	}
+	if val := os.Getenv("POSTGRES_USER"); val != "" {
+		cfg.Database.User = val
+	}
+	if val := os.Getenv("POSTGRES_PASSWORD"); val != "" {
+		cfg.Database.Password = val
+	}
+	if val := os.Getenv("POSTGRES_DB"); val != "" {
+		cfg.Database.DBName = val
+	}
+	if val := os.Getenv("RABBITMQ_URI"); val != "" {
+		cfg.RabbitMQ.URI = val
 	}
 
 	return &cfg, nil

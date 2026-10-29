@@ -16,8 +16,10 @@ SQLC  := $(shell which sqlc 2>/dev/null || echo "$$(go env GOPATH)/bin/sqlc")
 DB_DSN ?= postgres://bitmill_user:bitmill_password@localhost:5432/bitmill_media?sslmode=disable
 
 # Docker Compose environment specification
-COMPOSE_FILE ?= environment/docker-compose.yml
-COMPOSE      := docker compose -f $(COMPOSE_FILE)
+COMPOSE_FILE      ?= environment/docker-compose.yml
+COMPOSE           := docker compose -f $(COMPOSE_FILE)
+COMPOSE_PROD_FILE ?= environment/docker-compose.prod.yml
+COMPOSE_PROD      := docker compose --env-file .env -f $(COMPOSE_PROD_FILE)
 
 ## ----------------------------------------------------------------------
 ## 🛠️ BITMILL MEDIA PLATFORM AUTOMATION MAKEFILE
@@ -95,6 +97,26 @@ obs-up: ## Start Prometheus, Loki, Promtail, and Grafana monitoring stack
 
 obs-down: ## Stop monitoring stack containers
 	$(COMPOSE) stop prometheus loki promtail grafana
+
+## 🏭 Production Stack & Gateway (RFC-003)
+docker-prod-build: ## Build production multi-stage images for server and worker
+	docker build -f environment/docker/Dockerfile.server -t bitmill/server:latest .
+	docker build -f environment/docker/Dockerfile.worker -t bitmill/worker:latest .
+
+docker-prod-up: ## Start production stack (Gateway, Server, Worker, Postgres, RabbitMQ)
+	$(COMPOSE_PROD) up -d
+
+docker-prod-down: ## Stop production stack containers
+	$(COMPOSE_PROD) down
+
+docker-prod-logs: ## Tail logs from production stack containers
+	$(COMPOSE_PROD) logs -f
+
+docker-prod-ps: ## View status of production stack containers
+	$(COMPOSE_PROD) ps
+
+verify-prod: ## Run end-to-end production stack verification (ports, gateway, health, limits)
+	chmod +x scripts/verify-production-stack.sh && ./scripts/verify-production-stack.sh
 
 ## 🗄️ Database Management & Goose Migrations
 migrate-up: ## Run all pending database migrations via Goose
