@@ -104,7 +104,8 @@ func main() {
 	} else {
 		defer rabbitMQAdapter.Close()
 		uploadService.SetTranscodingQueue(pgRepo, rabbitMQAdapter, cfg.Storage.R2.ProcessedBucket)
-		log.Info("RabbitMQ Event Dispatcher wired to UploadService (Exchange: %s)", cfg.RabbitMQ.Exchange)
+		legacyService.SetTranscodingQueue(pgRepo, rabbitMQAdapter, cfg.Storage.R2.ProcessedBucket)
+		log.Info("RabbitMQ Event Dispatcher wired to UploadService and Service (Exchange: %s)", cfg.RabbitMQ.Exchange)
 	}
 
 	// Scan available test videos
