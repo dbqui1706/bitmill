@@ -96,9 +96,18 @@ func main() {
 	log.Info("✅ Step 4: Docker FFmpeg Transcoder initialized (Image: %s)", cfg.Transcoder.DockerImage)
 
 	// 6. Stage sample.mp4 to Cloudflare R2 raw bucket
-	samplePath := filepath.Join(rootDir, "sample.mp4")
-	if _, err := os.Stat(samplePath); err != nil {
-		samplePath = "../sample.mp4"
+	sampleCandidates := []string{
+		filepath.Join(rootDir, "testdata", "sample.mp4"),
+		filepath.Join(rootDir, "sample.mp4"),
+		"../testdata/sample.mp4",
+		"../sample.mp4",
+	}
+	samplePath := ""
+	for _, p := range sampleCandidates {
+		if _, err := os.Stat(p); err == nil {
+			samplePath = p
+			break
+		}
 	}
 	sampleInfo, err := os.Stat(samplePath)
 	if err != nil {

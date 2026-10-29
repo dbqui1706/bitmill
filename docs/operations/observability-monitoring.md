@@ -45,7 +45,7 @@ The observability stack delivers centralized, single-pane-of-glass monitoring fo
 
 ## 2. Port Topology & Service Endpoints
 
-All monitoring services run as lightweight Docker containers orchestrated by `docker-compose.yml`:
+All monitoring services run as lightweight Docker containers orchestrated by `environment/docker-compose.yml`:
 
 | Service | Internal Port | Host Port | Purpose | Credentials / URL |
 | :--- | :--- | :--- | :--- | :--- |
@@ -85,7 +85,7 @@ docker compose ps
 
 ## 4. Pre-Provisioned Dashboards & Telemetry
 
-The platform includes **zero-touch automated provisioning** via `deployments/docker/grafana/provisioning`:
+The platform includes **zero-touch automated provisioning** via `environment/grafana/provisioning`:
 
 ### 4.1 Data Sources
 - **Prometheus** (`http://prometheus:9090`): Default time-series data source.

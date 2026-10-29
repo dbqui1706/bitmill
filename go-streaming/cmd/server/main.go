@@ -160,6 +160,9 @@ func registerAvailableVideos(svc *videoApp.Service, rootDir string, log *logger.
 
 	for _, c := range candidates {
 		fullPath := filepath.Join(rootDir, c.filename)
+		if _, err := os.Stat(fullPath); err != nil {
+			fullPath = filepath.Join(rootDir, "testdata", c.filename)
+		}
 		if _, err := os.Stat(fullPath); err == nil {
 			_, _ = svc.RegisterVideo(context.Background(), c.id, c.title, fullPath)
 			log.Info("Auto-registered existing video: '%s' (Path: %s)", c.title, fullPath)
