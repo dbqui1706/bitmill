@@ -61,6 +61,17 @@ type ffprobeJSON struct {
 
 // ProbeMedia extracts media duration, codecs, bitrate, and dimensions using ffprobe inside Docker
 func (t *DockerFFmpegTranscoder) ProbeMedia(ctx context.Context, localSourcePath string) (*video.MediaMetadata, error) {
+	if strings.TrimSpace(localSourcePath) == "" {
+		return nil, errors.New("cannot probe media: localSourcePath cannot be empty")
+	}
+	fi, err := os.Stat(localSourcePath)
+	if err != nil {
+		return nil, fmt.Errorf("media source does not exist: %w", err)
+	}
+	if fi.IsDir() {
+		return nil, fmt.Errorf("localSourcePath %q is a directory, expected a media file", localSourcePath)
+	}
+
 	mountDir, relPaths, err := resolveMountAndPaths(localSourcePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve mount dir for source: %w", err)
@@ -275,6 +286,17 @@ func (t *DockerFFmpegTranscoder) TranscodeABR(ctx context.Context, localSourcePa
 
 // ExtractThumbnail captures a video frame poster at the specified second
 func (t *DockerFFmpegTranscoder) ExtractThumbnail(ctx context.Context, localSourcePath, outputPath string, atSecond float64) error {
+	if strings.TrimSpace(localSourcePath) == "" {
+		return errors.New("cannot extract thumbnail: localSourcePath cannot be empty")
+	}
+	fi, err := os.Stat(localSourcePath)
+	if err != nil {
+		return fmt.Errorf("media source does not exist: %w", err)
+	}
+	if fi.IsDir() {
+		return fmt.Errorf("localSourcePath %q is a directory, expected a media file", localSourcePath)
+	}
+
 	if atSecond < 0 {
 		atSecond = 1.0
 	}
@@ -316,6 +338,17 @@ func (t *DockerFFmpegTranscoder) ExtractThumbnail(ctx context.Context, localSour
 
 // TranscodeToHLS implements legacy single-bitrate interface for backward compatibility
 func (t *DockerFFmpegTranscoder) TranscodeToHLS(ctx context.Context, sourcePath, outputDir, playlistName string) error {
+	if strings.TrimSpace(sourcePath) == "" {
+		return errors.New("cannot transcode to HLS: sourcePath cannot be empty")
+	}
+	fi, err := os.Stat(sourcePath)
+	if err != nil {
+		return fmt.Errorf("source file does not exist: %w", err)
+	}
+	if fi.IsDir() {
+		return fmt.Errorf("sourcePath %q is a directory, expected a media file", sourcePath)
+	}
+
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return fmt.Errorf("failed to create output dir: %w", err)
 	}
@@ -362,6 +395,12 @@ func (t *DockerFFmpegTranscoder) TranscodeToHLS(ctx context.Context, sourcePath,
 func resolveMountAndPaths(paths ...string) (string, []string, error) {
 	if len(paths) == 0 {
 		return "", nil, errors.New("no paths provided")
+	}
+
+	for _, p := range paths {
+		if strings.TrimSpace(p) == "" {
+			return "", nil, errors.New("cannot resolve mount paths: path cannot be empty")
+		}
 	}
 
 	absPaths := make([]string, len(paths))

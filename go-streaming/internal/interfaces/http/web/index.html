@@ -1323,11 +1323,13 @@ if err == nil {
             const streamUrl = v.master_playlist_url || v.hls_url || '';
             actionBtn = `<button style="font-size: 0.8rem; padding: 0.35rem 0.75rem;" onclick="playHLS('${streamUrl}', '${v.title}')">▶️ Phát Video</button>`;
           } else if (v.status === 'UPLOADED') {
-            actionBtn = `<button style="font-size: 0.8rem; padding: 0.35rem 0.75rem; background: #4f46e5;" onclick="triggerTranscode('${v.id}')">⚙️ Cắt HLS ABR</button>`;
+            actionBtn = `<span style="color: var(--cyan); font-size: 0.82rem; font-weight: 600;">⏳ Đã vào Queue</span><br><small style="color: var(--text-muted); font-size: 0.72rem;">Chờ Worker (<code>make worker</code>)</small> <button style="font-size: 0.7rem; padding: 0.2rem 0.5rem; background: #334155; margin-left: 4px;" onclick="triggerTranscode('${v.id}')" title="Đẩy lại vào hàng đợi RabbitMQ">🔄 Re-queue</button>`;
           } else if (v.status === 'PROCESSING') {
-            actionBtn = '<span style="color: var(--amber); font-size: 0.85rem;">⏳ Đang xử lý...</span>';
+            actionBtn = '<span style="color: var(--amber); font-size: 0.85rem; font-weight: 600;">⚙️ Worker đang cắt HLS ABR...</span>';
           } else if (v.status === 'PENDING_UPLOAD') {
             actionBtn = '<span style="color: var(--text-muted); font-size: 0.85rem;">Đang upload...</span>';
+          } else if (v.status === 'FAILED') {
+            actionBtn = `<span style="color: var(--red); font-size: 0.85rem; font-weight: 600;">❌ Thất bại</span> <button style="font-size: 0.75rem; padding: 0.25rem 0.6rem; background: #b91c1c; margin-left: 6px;" onclick="triggerTranscode('${v.id}')" title="Đẩy lại vào hàng đợi RabbitMQ">🔄 Re-queue</button>`;
           } else {
             actionBtn = '<span style="color: var(--red); font-size: 0.85rem;">Lỗi</span>';
           }
@@ -1357,16 +1359,18 @@ if err == nil {
     }
 
     async function triggerTranscode(id) {
-      log(`[Queue] Đang đẩy video ${id} vào RabbitMQ Exchange bitmill.video.events...`);
+      log(`[Queue] Đang gửi yêu cầu xếp hàng lại cho video ${id} vào RabbitMQ...`);
       renderSimStep(3); // Bước 3: RabbitMQ Queue
-      setTimeout(() => {
-        log(`[Worker] Worker kéo job từ Queue về /tmp scratch disk và bắt đầu Docker FFmpeg...`);
-        renderSimStep(4); // Bước 4: Worker + Docker FFmpeg
-      }, 1500);
 
       try {
-        await fetch(`/api/videos/${id}/process`, { method: 'POST' });
-        setTimeout(loadVideos, 2000);
+        const res = await fetch(`/api/videos/${id}/process`, { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          log(`[Queue] Đã xếp hàng video ${id} vào RabbitMQ! Hãy chắc chắn Worker daemon (make worker) đang chạy.`);
+        } else {
+          log(`[Queue] Lỗi xếp hàng: ${data.error || 'Thao tác không thành công'}`, 'err');
+        }
+        setTimeout(loadVideos, 1500);
       } catch (err) {
         log(`Lỗi gọi process: ${err.message}`, 'err');
       }
