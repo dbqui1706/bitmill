@@ -1,0 +1,49 @@
+# ---------------------------------------------------------
+# STAGE 1: Go Compile Environment
+# ---------------------------------------------------------
+FROM golang:alpine AS builder
+
+WORKDIR /src
+
+RUN apk add --no-cache git ca-certificates tzdata
+
+COPY go-streaming/go.mod go-streaming/go.sum ./
+RUN go mod download && go mod verify
+
+COPY go-streaming/ ./
+
+RUN CGO_ENABLED=0 \
+    go build -trimpath -ldflags="-s -w -extldflags '-static'" \
+    -o /bin/worker cmd/worker/main.go
+
+# ---------------------------------------------------------
+# STAGE 2: Static FFmpeg Binaries Supplier
+# ---------------------------------------------------------
+FROM mwader/static-ffmpeg:latest AS ffmpeg-source
+
+# ---------------------------------------------------------
+# STAGE 3: Minimal Hardened Worker Runner
+# ---------------------------------------------------------
+FROM alpine:3.21 AS runner
+
+RUN apk add --no-cache ca-certificates tzdata \
+    && addgroup -g 10001 -S bitmill \
+    && adduser -u 10001 -S bitmill -G bitmill -h /home/bitmill \
+    && mkdir -p /tmp/scratch /app/logs \
+    && chown -R bitmill:bitmill /tmp/scratch /app/logs
+
+WORKDIR /app
+
+# Embed static ffmpeg and ffprobe binaries directly
+COPY --from=ffmpeg-source /ffmpeg /usr/local/bin/ffmpeg
+COPY --from=ffmpeg-source /ffprobe /usr/local/bin/ffprobe
+
+COPY --chown=10001:10001 --from=builder /bin/worker /app/worker
+COPY --chown=10001:10001 --from=builder /src/config.yaml /app/config.yaml
+
+USER 10001:10001
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
+  CMD test -f /tmp/worker.heartbeat && test $(( $(date +%s) - $(stat -c %Y /tmp/worker.heartbeat 2>/dev/null || stat -f %m /tmp/worker.heartbeat) )) -lt 30 || exit 1
+
+ENTRYPOINT ["/app/worker"]

@@ -98,6 +98,10 @@ func (t *DockerFFmpegTranscoder) ProbeMedia(ctx context.Context, localSourcePath
 		return nil, fmt.Errorf("ffprobe probe failed: %w, log: %s", err, string(out))
 	}
 
+	return parseProbeJSON(out)
+}
+
+func parseProbeJSON(out []byte) (*video.MediaMetadata, error) {
 	var probe ffprobeJSON
 	if err := json.Unmarshal(out, &probe); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal ffprobe json output: %w", err)

@@ -1,0 +1,202 @@
+name: bitmill-prod
+
+networks:
+  bitmill-public:
+    driver: bridge
+  bitmill-internal:
+    driver: bridge
+    internal: true
+
+services:
+  # ---------------------------------------------------------
+  # 1. Edge Reverse Proxy & Media Gateway (ONLY PUBLIC INGRESS)
+  # ---------------------------------------------------------
+  gateway:
+    image: nginx:1.25-alpine
+    container_name: bitmill-prod-gateway
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - bitmill-public
+      - bitmill-internal
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 256M
+        reservations:
+          cpus: "0.25"
+          memory: 64M
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    depends_on:
+      server:
+        condition: service_healthy
+
+  # ---------------------------------------------------------
+  # 2. Bitmill API Server (No host ports published)
+  # ---------------------------------------------------------
+  server:
+    build:
+      context: ..
+      dockerfile: environment/docker/Dockerfile.server
+    image: bitmill/server:latest
+    container_name: bitmill-prod-server
+    restart: unless-stopped
+    networks:
+      - bitmill-internal
+    env_file:
+      - ../.env
+    environment:
+      - APP_ENV=production
+      - GIN_MODE=release
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-bitmill_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-bitmill_password}
+      - POSTGRES_DB=${POSTGRES_DB:-bitmill_media}
+      - RABBITMQ_URI=amqp://${RABBITMQ_USER:-bitmill_mq}:${RABBITMQ_PASSWORD:-bitmill_mq_password}@rabbitmq:5672/
+      - CLOUDFLARE_ACCOUNT_ID=${CLOUDFLARE_ACCOUNT_ID}
+      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID}
+      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY}
+      - R2_RAW_BUCKET=${R2_RAW_BUCKET:-bitmill-raw-videos}
+      - R2_PROCESSED_BUCKET=${R2_PROCESSED_BUCKET:-bitmill-processed-videos}
+      - R2_PUBLIC_DOMAIN=${R2_PUBLIC_DOMAIN}
+      - R2_ENDPOINT=${R2_ENDPOINT}
+    deploy:
+      resources:
+        limits:
+          cpus: "1.50"
+          memory: 512M
+        reservations:
+          cpus: "0.50"
+          memory: 128M
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  # ---------------------------------------------------------
+  # 3. Transcoding Worker (Embedded FFmpeg, No Host Ports)
+  # ---------------------------------------------------------
+  worker:
+    build:
+      context: ..
+      dockerfile: environment/docker/Dockerfile.worker
+    image: bitmill/worker:latest
+    container_name: bitmill-prod-worker
+    restart: unless-stopped
+    networks:
+      - bitmill-internal
+    env_file:
+      - ../.env
+    environment:
+      - APP_ENV=production
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-bitmill_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-bitmill_password}
+      - POSTGRES_DB=${POSTGRES_DB:-bitmill_media}
+      - RABBITMQ_URI=amqp://${RABBITMQ_USER:-bitmill_mq}:${RABBITMQ_PASSWORD:-bitmill_mq_password}@rabbitmq:5672/
+      - TRANSCODER_TYPE=native
+      - TRANSCODER_FFMPEG_PATH=/usr/local/bin/ffmpeg
+      - TRANSCODER_FFPROBE_PATH=/usr/local/bin/ffprobe
+      - CLOUDFLARE_ACCOUNT_ID=${CLOUDFLARE_ACCOUNT_ID}
+      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID}
+      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY}
+      - R2_RAW_BUCKET=${R2_RAW_BUCKET:-bitmill-raw-videos}
+      - R2_PROCESSED_BUCKET=${R2_PROCESSED_BUCKET:-bitmill-processed-videos}
+      - R2_PUBLIC_DOMAIN=${R2_PUBLIC_DOMAIN}
+      - R2_ENDPOINT=${R2_ENDPOINT}
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=2048M
+    deploy:
+      resources:
+        limits:
+          cpus: "4.00"
+          memory: 4096M
+        reservations:
+          cpus: "1.00"
+          memory: 1024M
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  # ---------------------------------------------------------
+  # 4. PostgreSQL (Zero-Trust Internal Network)
+  # ---------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: bitmill-prod-postgres
+    restart: unless-stopped
+    networks:
+      - bitmill-internal
+    env_file:
+      - ../.env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-bitmill_media}
+      POSTGRES_USER: ${POSTGRES_USER:-bitmill_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bitmill_password}
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+      - ../scripts/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    deploy:
+      resources:
+        limits:
+          cpus: "2.00"
+          memory: 2048M
+        reservations:
+          cpus: "0.50"
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bitmill_user} -d ${POSTGRES_DB:-bitmill_media}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ---------------------------------------------------------
+  # 5. RabbitMQ (Zero-Trust Internal Network)
+  # ---------------------------------------------------------
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: bitmill-prod-rabbitmq
+    restart: unless-stopped
+    networks:
+      - bitmill-internal
+    env_file:
+      - ../.env
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-bitmill_mq}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-bitmill_mq_password}
+    volumes:
+      - rabbitmq_prod_data:/var/lib/rabbitmq
+    deploy:
+      resources:
+        limits:
+          cpus: "1.50"
+          memory: 1024M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_prod_data:
+    driver: local
+  rabbitmq_prod_data:
+    driver: local

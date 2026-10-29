@@ -123,12 +123,45 @@ func main() {
 	}()
 
 	// 7. [Interfaces Layer - HTTP Gin Engine Port 8080]
-	gin.SetMode(gin.DebugMode)
+	if os.Getenv("APP_ENV") == "production" || os.Getenv("GIN_MODE") == "release" {
+		gin.SetMode(gin.ReleaseMode)
+	} else {
+		gin.SetMode(gin.DebugMode)
+	}
 	router := gin.Default()
 
 	// 7.1 [Observability Middleware & Prometheus /metrics Endpoint]
 	router.Use(metrics.PrometheusMiddleware())
 	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
+
+	// 7.2 [Health & Readiness Probes for Edge Gateway & Container Healthchecks]
+	healthHandler := func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"status":  "UP",
+			"service": "bitmill-server",
+			"time":    time.Now().UTC().Format(time.RFC3339),
+		})
+	}
+	router.GET("/health", healthHandler)
+	router.HEAD("/health", healthHandler)
+
+	liveHandler := func(c *gin.Context) {
+		c.String(200, "OK")
+	}
+	router.GET("/livez", liveHandler)
+	router.HEAD("/livez", liveHandler)
+
+	readyHandler := func(c *gin.Context) {
+		pingCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := pgPool.Ping(pingCtx); err != nil {
+			c.JSON(503, gin.H{"status": "DOWN", "error": "database unreachable"})
+			return
+		}
+		c.JSON(200, gin.H{"status": "READY", "database": "UP"})
+	}
+	router.GET("/readyz", readyHandler)
+	router.HEAD("/readyz", readyHandler)
 
 	// Register Handlers
 	legacyHandler := deliveryHTTP.NewHandler(legacyService, hlsDir, log)

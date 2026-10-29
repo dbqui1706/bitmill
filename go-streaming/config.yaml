@@ -31,6 +31,9 @@ rabbitmq:
   dlq: "video.transcoding.dlq"
 
 transcoder:
+  type: "docker"
+  ffmpeg_path: "ffmpeg"
+  ffprobe_path: "ffprobe"
   docker_image: "mwader/static-ffmpeg:latest"
   gop_size: 60
   hls_segment_duration: 4

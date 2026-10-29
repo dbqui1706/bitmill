@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	videoApp "quidb.dev/go-streaming/internal/application/video"
 	"quidb.dev/go-streaming/internal/config"
+	"quidb.dev/go-streaming/internal/domain/video"
 	"quidb.dev/go-streaming/internal/infrastructure/queue"
 	"quidb.dev/go-streaming/internal/infrastructure/repository"
 	"quidb.dev/go-streaming/internal/infrastructure/storage"
@@ -66,19 +67,50 @@ func main() {
 	log.Info("Cloudflare R2 Adapter connected (Raw: %s, Processed: %s)",
 		cfg.Storage.R2.RawBucket, cfg.Storage.R2.ProcessedBucket)
 
-	// 4. [Docker FFmpeg Transcoder]
-	rootDir, err := filepath.Abs(cfg.Storage.RootDir)
-	if err != nil {
-		rootDir = "."
+	// 4. [FFmpeg Transcoder: Native vs Docker via IoC]
+	var ffmpegTranscoder video.Transcoder
+	if cfg.Transcoder.Type == "native" {
+		ffmpegTranscoder = transcoder.NewNativeFFmpegTranscoder(
+			cfg.Transcoder.FFmpegPath,
+			cfg.Transcoder.FFprobePath,
+			cfg.Transcoder.GOPSize,
+			cfg.Transcoder.HLSSegmentDuration,
+		)
+		log.Info("Native FFmpeg Media Engine initialized (FFmpeg: %s, FFprobe: %s, GOP: %d, Segment: %ds)",
+			cfg.Transcoder.FFmpegPath, cfg.Transcoder.FFprobePath, cfg.Transcoder.GOPSize, cfg.Transcoder.HLSSegmentDuration)
+	} else {
+		rootDir, err := filepath.Abs(cfg.Storage.RootDir)
+		if err != nil {
+			rootDir = "."
+		}
+		ffmpegTranscoder = transcoder.NewDockerFFmpegTranscoder(
+			rootDir,
+			cfg.Transcoder.DockerImage,
+			cfg.Transcoder.GOPSize,
+			cfg.Transcoder.HLSSegmentDuration,
+		)
+		log.Info("Docker FFmpeg Media Engine initialized (Image: %s, GOP: %d, Segment: %ds)",
+			cfg.Transcoder.DockerImage, cfg.Transcoder.GOPSize, cfg.Transcoder.HLSSegmentDuration)
 	}
-	ffmpegTranscoder := transcoder.NewDockerFFmpegTranscoder(
-		rootDir,
-		cfg.Transcoder.DockerImage,
-		cfg.Transcoder.GOPSize,
-		cfg.Transcoder.HLSSegmentDuration,
-	)
-	log.Info("Docker FFmpeg Media Engine initialized (Image: %s, GOP: %d, Segment: %ds)",
-		cfg.Transcoder.DockerImage, cfg.Transcoder.GOPSize, cfg.Transcoder.HLSSegmentDuration)
+
+	// 4.1 [Worker Health Heartbeat for Container Healthchecks]
+	heartbeatFile := os.Getenv("WORKER_HEARTBEAT_FILE")
+	if heartbeatFile == "" {
+		heartbeatFile = "/tmp/worker.heartbeat"
+	}
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				_ = os.Remove(heartbeatFile)
+				return
+			case <-ticker.C:
+				_ = os.WriteFile(heartbeatFile, []byte(fmt.Sprintf("%d\n", time.Now().Unix())), 0644)
+			}
+		}
+	}()
 
 	// 5. [RabbitMQ Message Broker]
 	queueCfg := queue.RabbitMQConfig{
