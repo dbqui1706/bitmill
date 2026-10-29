@@ -15,7 +15,7 @@
   - Interfaces must be declared in the `domain` layer (or by the consumer), completely decoupled from infrastructure.
   - Concrete adapters are instantiated only at the composition root (`cmd/**/main.go`) and injected via constructors (Dependency Injection).
 - **DDD & Clean Architecture**: Maintain strict separation of concerns under `go-streaming/internal/` (`domain`, `application`, `infrastructure`, `interfaces`). `domain` must remain 100% dependency-free.
-- **Media Engine Isolation**: NEVER install FFmpeg on the host machine. All video processing operations must execute through Docker (`mwader/static-ffmpeg:latest`) or root wrapper scripts (`./ffmpeg.sh`, `./ffprobe.sh`).
+- **Media Engine Isolation**: NEVER install FFmpeg on the host machine. All video processing operations must execute through Docker (`mwader/static-ffmpeg:latest`) or wrapper scripts (`scripts/ffmpeg.sh`, `scripts/ffprobe.sh`).
 - **Configuration**: Always manage application parameters through Viper using `go-streaming/config.yaml` and environment variables.
 - **Git Worktree Isolation for Implementation (MANDATORY)**:
   - NEVER write feature implementation code directly on the `main` branch.

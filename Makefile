@@ -15,6 +15,10 @@ SQLC  := $(shell which sqlc 2>/dev/null || echo "$$(go env GOPATH)/bin/sqlc")
 # Database connection
 DB_DSN ?= postgres://bitmill_user:bitmill_password@localhost:5432/bitmill_media?sslmode=disable
 
+# Docker Compose environment specification
+COMPOSE_FILE ?= environment/docker-compose.yml
+COMPOSE      := docker compose -f $(COMPOSE_FILE)
+
 ## ----------------------------------------------------------------------
 ## 🛠️ BITMILL MEDIA PLATFORM AUTOMATION MAKEFILE
 ## ----------------------------------------------------------------------
@@ -75,22 +79,22 @@ worktree-clean: ## Remove worktree directory and branch (usage: make worktree-cl
 
 ## 🐳 Infrastructure, Docker & Observability
 docker-up: ## Start all infrastructure containers (Postgres, RabbitMQ, Prometheus, Loki, Promtail, Grafana)
-	docker compose up -d
+	$(COMPOSE) up -d
 
 docker-down: ## Stop all background Docker containers
-	docker compose down
+	$(COMPOSE) down
 
 docker-logs: ## Tail logs from all Docker containers
-	docker compose logs -f
+	$(COMPOSE) logs -f
 
 docker-ps: ## View status of running Docker containers
-	docker compose ps
+	$(COMPOSE) ps
 
 obs-up: ## Start Prometheus, Loki, Promtail, and Grafana monitoring stack
-	docker compose up -d prometheus loki promtail grafana
+	$(COMPOSE) up -d prometheus loki promtail grafana
 
 obs-down: ## Stop monitoring stack containers
-	docker compose stop prometheus loki promtail grafana
+	$(COMPOSE) stop prometheus loki promtail grafana
 
 ## 🗄️ Database Management & Goose Migrations
 migrate-up: ## Run all pending database migrations via Goose
