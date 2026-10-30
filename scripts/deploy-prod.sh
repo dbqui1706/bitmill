@@ -181,6 +181,12 @@ sleep "${DRAIN_TIMEOUT}"
 echo -e "  • Stopping drained ${ACTIVE_SLOT} instance (${ACTIVE_SERVICE})..."
 docker compose --env-file .env -f "${COMPOSE_FILE}" stop "${ACTIVE_SERVICE}"
 
+# Gracefully stop legacy single-slot container if it was running prior to dual-slot migration
+if docker ps --format '{{.Names}}' | grep -q '^bitmill-prod-server$'; then
+    echo -e "  • Stopping legacy bitmill-prod-server container..."
+    docker stop bitmill-prod-server || true
+fi
+
 echo -e "  • Updating Transcoding Worker to commit SHA ${COMMIT_SHA}..."
 WORKER_IMAGE="${WORKER_IMAGE}" docker compose --env-file .env -f "${COMPOSE_FILE}" up -d worker
 
