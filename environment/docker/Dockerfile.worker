@@ -26,7 +26,8 @@ FROM mwader/static-ffmpeg:latest AS ffmpeg-source
 # ---------------------------------------------------------
 FROM alpine:3.21 AS runner
 
-RUN apk add --no-cache ca-certificates tzdata \
+RUN apk update && apk upgrade --no-cache \
+    && apk add --no-cache ca-certificates tzdata \
     && addgroup -g 10001 -S bitmill \
     && adduser -u 10001 -S bitmill -G bitmill -h /home/bitmill \
     && mkdir -p /tmp/scratch /app/logs \
