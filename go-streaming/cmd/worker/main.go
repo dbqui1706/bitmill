@@ -98,6 +98,8 @@ func main() {
 	if heartbeatFile == "" {
 		heartbeatFile = "/tmp/worker.heartbeat"
 	}
+	// Touch initial heartbeat immediately upon boot
+	_ = os.WriteFile(heartbeatFile, []byte(fmt.Sprintf("%d\n", time.Now().Unix())), 0644)
 	go func() {
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()

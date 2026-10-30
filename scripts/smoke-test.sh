@@ -56,8 +56,15 @@ fi
 # 5. Worker Daemon Heartbeat Telemetry Check
 echo -e "\n${CYAN}[5/6] Verifying Transcoding Worker Heartbeat...${RESET}"
 if docker ps --format '{{.Names}}' | grep -q 'bitmill-prod-worker'; then
-    WORKER_HB_AGE=$(docker exec bitmill-prod-worker sh -c 'test -f /tmp/worker.heartbeat && echo $(( $(date +%s) - $(stat -c %Y /tmp/worker.heartbeat 2>/dev/null || stat -f %m /tmp/worker.heartbeat) ))' || echo "999")
-    if [ "$WORKER_HB_AGE" -lt 30 ]; then
+    WORKER_HB_AGE=999
+    for attempt in {1..10}; do
+        WORKER_HB_AGE=$(docker exec bitmill-prod-worker sh -c 'test -f /tmp/worker.heartbeat && echo $(( $(date +%s) - $(stat -c %Y /tmp/worker.heartbeat 2>/dev/null || stat -f %m /tmp/worker.heartbeat) ))' 2>/dev/null || echo "999")
+        if [ "$WORKER_HB_AGE" -lt 30 ] 2>/dev/null; then
+            break
+        fi
+        sleep 1
+    done
+    if [ "$WORKER_HB_AGE" -lt 30 ] 2>/dev/null; then
         echo -e "  • Worker Heartbeat: ${GREEN}PASS (Heartbeat age: ${WORKER_HB_AGE}s < 30s threshold)${RESET}"
     else
         echo -e "  ${RED}❌ Worker heartbeat is stale or missing! Age: ${WORKER_HB_AGE}s${RESET}"
