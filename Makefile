@@ -126,11 +126,13 @@ deploy-prod: ## Run zero-downtime rolling deployment on production stack (usage:
 smoke-test: ## Run synthetic post-deployment smoke verification suite
 	bash scripts/smoke-test.sh http://127.0.0.1
 
-ci-lint: ## Run code formatting check and Go linter
+ci-lint: ## Run code formatting check, go vet and linter
 	@echo "Checking Go format..."
 	@cd go-streaming && test -z "$$(gofmt -l .)" || (echo "Unformatted files found: $$(gofmt -l .)"; exit 1)
-	@echo "Running golangci-lint..."
-	@cd go-streaming && golangci-lint run ./... || true
+	@echo "Running go vet..."
+	@cd go-streaming && go vet ./...
+	@echo "Running golangci-lint (optional)..."
+	@cd go-streaming && (which golangci-lint >/dev/null 2>&1 && golangci-lint run ./... || true)
 
 ci-test: ## Run unit tests with race detection and coverage threshold
 	cd go-streaming && go test -v -race -cover ./internal/...
