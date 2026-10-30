@@ -31,9 +31,9 @@ var (
 )
 
 const (
-	MinPartSizeBytes int64 = 5 * 1024 * 1024       // 5MB S3 minimum
-	ChunkSize10MB    int64 = 10 * 1024 * 1024      // 10MB for <= 250MB
-	ChunkSize20MB    int64 = 20 * 1024 * 1024      // 20MB for > 250MB
+	MinPartSizeBytes int64 = 5 * 1024 * 1024        // 5MB S3 minimum
+	ChunkSize10MB    int64 = 10 * 1024 * 1024       // 10MB for <= 250MB
+	ChunkSize20MB    int64 = 20 * 1024 * 1024       // 20MB for > 250MB
 	MaxFileSizeBytes int64 = 5 * 1024 * 1024 * 1024 // 5GB
 )
 
@@ -61,19 +61,19 @@ func CalculateTotalParts(fileSizeBytes, partSizeBytes int64) int {
 
 // UploadSession represents an active or completed multipart upload session.
 type UploadSession struct {
-	ID               string              `json:"id"`
-	VideoID          string              `json:"video_id"`
-	UploadID         string              `json:"upload_id"`
-	StorageBucket    string              `json:"storage_bucket"`
-	StorageKey       string              `json:"storage_key"`
-	FileFingerprint  string              `json:"file_fingerprint"`
-	TotalSizeBytes   int64               `json:"total_size_bytes"`
-	PartSizeBytes    int64               `json:"part_size_bytes"`
-	TotalParts       int                 `json:"total_parts"`
-	Status           UploadSessionStatus `json:"status"`
-	ExpiresAt        time.Time           `json:"expires_at"`
-	CreatedAt        time.Time           `json:"created_at"`
-	UpdatedAt        time.Time           `json:"updated_at"`
+	ID              string              `json:"id"`
+	VideoID         string              `json:"video_id"`
+	UploadID        string              `json:"upload_id"`
+	StorageBucket   string              `json:"storage_bucket"`
+	StorageKey      string              `json:"storage_key"`
+	FileFingerprint string              `json:"file_fingerprint"`
+	TotalSizeBytes  int64               `json:"total_size_bytes"`
+	PartSizeBytes   int64               `json:"part_size_bytes"`
+	TotalParts      int                 `json:"total_parts"`
+	Status          UploadSessionStatus `json:"status"`
+	ExpiresAt       time.Time           `json:"expires_at"`
+	CreatedAt       time.Time           `json:"created_at"`
+	UpdatedAt       time.Time           `json:"updated_at"`
 }
 
 func (s *UploadSession) IsExpired() bool {

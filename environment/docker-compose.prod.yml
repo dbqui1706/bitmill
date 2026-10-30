@@ -23,7 +23,7 @@ services:
       - bitmill-internal
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:rw
     deploy:
       resources:
         limits:
@@ -38,18 +38,20 @@ services:
       timeout: 3s
       retries: 3
     depends_on:
-      server:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
 
   # ---------------------------------------------------------
-  # 2. Bitmill API Server (No host ports published)
+  # 2. Bitmill API Server - Dual-Slot Blue Instance (Active/Standby)
   # ---------------------------------------------------------
-  server:
+  server_blue:
     build:
       context: ..
       dockerfile: environment/docker/Dockerfile.server
-    image: bitmill/server:latest
-    container_name: bitmill-prod-server
+    image: ${SERVER_IMAGE:-bitmill/server:latest}
+    container_name: bitmill-prod-server-blue
     restart: unless-stopped
     networks:
       - bitmill-internal
@@ -79,6 +81,60 @@ services:
         reservations:
           cpus: "0.10"
           memory: 64M
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  # ---------------------------------------------------------
+  # 2.1 Bitmill API Server - Dual-Slot Green Instance (Active/Standby)
+  # ---------------------------------------------------------
+  server_green:
+    build:
+      context: ..
+      dockerfile: environment/docker/Dockerfile.server
+    image: ${SERVER_IMAGE:-bitmill/server:latest}
+    container_name: bitmill-prod-server-green
+    restart: unless-stopped
+    networks:
+      - bitmill-internal
+    env_file:
+      - ../.env
+    environment:
+      - APP_ENV=production
+      - GIN_MODE=release
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-bitmill_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-bitmill_password}
+      - POSTGRES_DB=${POSTGRES_DB:-bitmill_media}
+      - RABBITMQ_URI=amqp://${RABBITMQ_USER:-bitmill_mq}:${RABBITMQ_PASSWORD:-bitmill_mq_password}@rabbitmq:5672/
+      - CLOUDFLARE_ACCOUNT_ID=${CLOUDFLARE_ACCOUNT_ID}
+      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID}
+      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY}
+      - R2_RAW_BUCKET=${R2_RAW_BUCKET:-bitmill-raw-videos}
+      - R2_PROCESSED_BUCKET=${R2_PROCESSED_BUCKET:-bitmill-processed-videos}
+      - R2_PUBLIC_DOMAIN=${R2_PUBLIC_DOMAIN}
+      - R2_ENDPOINT=${R2_ENDPOINT}
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 256M
+        reservations:
+          cpus: "0.10"
+          memory: 64M
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
     depends_on:
       postgres:
         condition: service_healthy
@@ -92,9 +148,10 @@ services:
     build:
       context: ..
       dockerfile: environment/docker/Dockerfile.worker
-    image: bitmill/worker:latest
+    image: ${WORKER_IMAGE:-bitmill/worker:latest}
     container_name: bitmill-prod-worker
     restart: unless-stopped
+    stop_grace_period: 120s
     networks:
       - bitmill-internal
     env_file:
@@ -194,6 +251,27 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # ---------------------------------------------------------
+  # 6. Ephemeral Database Migration Runner (Goose)
+  # ---------------------------------------------------------
+  migrator:
+    image: gomicro/goose:latest
+    profiles: ["migration"]
+    networks:
+      - bitmill-internal
+    volumes:
+      - ../migrations:/migrations:ro
+    entrypoint: ["goose"]
+    command:
+      - "-dir"
+      - "/migrations"
+      - "postgres"
+      - "postgres://${POSTGRES_USER:-bitmill_user}:${POSTGRES_PASSWORD:-bitmill_password}@postgres:5432/${POSTGRES_DB:-bitmill_media}?sslmode=disable"
+      - "up"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   postgres_prod_data:

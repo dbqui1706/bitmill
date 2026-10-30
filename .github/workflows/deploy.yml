@@ -1,0 +1,60 @@
+name: Continuous Deployment to Production VPS
+
+on:
+  workflow_run:
+    workflows: ["CI Quality Gate & Security Pipeline"]
+    branches: [main]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: "Git Commit SHA or tag to deploy"
+        required: true
+        default: "latest"
+
+jobs:
+  deploy-to-vps:
+    name: Zero-Downtime Rollout to VPS
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Configure SSH Private Key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+
+      - name: Determine Target Commit SHA
+        id: target-sha
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "sha=${{ github.event.inputs.commit_sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Execute Zero-Downtime Rollout on VPS
+        env:
+          VPS_HOST: ${{ secrets.PROD_VPS_HOST }}
+          VPS_USER: ${{ secrets.PROD_VPS_USER }}
+          TARGET_SHA: ${{ steps.target-sha.outputs.sha }}
+          GHCR_PAT: ${{ secrets.GHCR_READ_TOKEN }}
+        run: |
+          echo "Connecting to production VPS at ${VPS_HOST} as ${VPS_USER}..."
+          ssh -o StrictHostKeyChecking=accept-new ${VPS_USER}@${VPS_HOST} \
+            "cd /opt/bitmill && git pull origin main && bash scripts/deploy-prod.sh --sha ${TARGET_SHA} --token ${GHCR_PAT}"
+
+      - name: Synthetic Public Gateway Ingress Verification
+        run: |
+          echo "Verifying public domain ingress: https://devlungtung.htcwood.com/health"
+          for i in {1..12}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" -m 5 https://devlungtung.htcwood.com/health || true)
+            if [ "$STATUS" -eq 200 ]; then
+              echo "✅ Public Edge Gateway Health Check Verified (HTTP 200)"
+              exit 0
+            fi
+            echo "Waiting for gateway readiness... (attempt $i/12)"
+            sleep 5
+          done
+          echo "❌ Public edge health verification failed!"
+          exit 1

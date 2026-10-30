@@ -2,9 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -176,8 +180,33 @@ func main() {
 	log.Info("👉 Upload API v1: %s/api/v1/videos/upload-session", cfg.Server.BaseURL)
 	fmt.Println("--------------------------------------------------")
 
-	if err := router.Run(httpAddr); err != nil {
-		log.Error("Gin Server error: %v", err)
+	srv := &http.Server{
+		Addr:              httpAddr,
+		Handler:           router,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	// Run HTTP server asynchronously
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Error("HTTP Server fatal error: %v", err)
+		}
+	}()
+
+	// Listen for OS termination signals (SIGINT, SIGTERM)
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+	sig := <-quit
+	log.Warn("Received termination signal (%v), initiating graceful shutdown...", sig)
+
+	// Context with 30s deadline for in-flight requests and chunk uploads to drain cleanly
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Error("Server graceful shutdown timed out: %v", err)
+	} else {
+		log.Info("Server stopped cleanly. All active connections drained.")
 	}
 }
 

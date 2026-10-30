@@ -32,13 +32,13 @@ type CreateSessionRequest struct {
 }
 
 type CreateSessionResponse struct {
-	VideoID         string                   `json:"video_id"`
-	UploadID        string                   `json:"upload_id"`
-	PartSizeBytes   int64                    `json:"part_size_bytes"`
-	TotalParts      int                      `json:"total_parts"`
-	ExpiresAt       time.Time                `json:"expires_at"`
-	Parts           []video.PartPresignedURL `json:"parts"`
-	IsResumed       bool                     `json:"is_resumed"`
+	VideoID       string                   `json:"video_id"`
+	UploadID      string                   `json:"upload_id"`
+	PartSizeBytes int64                    `json:"part_size_bytes"`
+	TotalParts    int                      `json:"total_parts"`
+	ExpiresAt     time.Time                `json:"expires_at"`
+	Parts         []video.PartPresignedURL `json:"parts"`
+	IsResumed     bool                     `json:"is_resumed"`
 }
 
 type UploadStatusResponse struct {
@@ -63,7 +63,7 @@ type UploadService struct {
 	jobRepo         video.JobRepository // Milestone 4
 	jobQueue        video.JobQueue      // Milestone 4
 	rawBucket       string
-	processedBucket string              // Milestone 4
+	processedBucket string // Milestone 4
 	sessionTTL      time.Duration
 	log             *logger.Logger
 }
@@ -137,17 +137,17 @@ func (s *UploadService) CreateUploadSession(ctx context.Context, req CreateSessi
 
 	// 5. Persist Video & UploadSession in Database
 	v := &video.Video{
-		ID:            videoID,
-		UserID:        req.UserID,
-		Title:         req.Title,
-		Description:   req.Description,
-		RawBucket:     s.rawBucket,
-		RawObjectKey:  storageKey,
-		RawSizeBytes:  req.FileSize,
-		MimeType:      req.MimeType,
-		Status:        video.StatusPendingUpload,
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
+		ID:           videoID,
+		UserID:       req.UserID,
+		Title:        req.Title,
+		Description:  req.Description,
+		RawBucket:    s.rawBucket,
+		RawObjectKey: storageKey,
+		RawSizeBytes: req.FileSize,
+		MimeType:     req.MimeType,
+		Status:       video.StatusPendingUpload,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
 	}
 	if err := s.videoRepo.Save(ctx, v); err != nil {
 		_ = s.storageProvider.AbortMultipartUpload(ctx, s.rawBucket, storageKey, uploadID)
@@ -155,19 +155,19 @@ func (s *UploadService) CreateUploadSession(ctx context.Context, req CreateSessi
 	}
 
 	session := &video.UploadSession{
-		ID:               uuid.NewString(),
-		VideoID:          videoID,
-		UploadID:         uploadID,
-		StorageBucket:    s.rawBucket,
-		StorageKey:       storageKey,
-		FileFingerprint:  req.FileFingerprint,
-		TotalSizeBytes:   req.FileSize,
-		PartSizeBytes:    partSize,
-		TotalParts:       totalParts,
-		Status:           video.SessionStatusUploading,
-		ExpiresAt:        expiresAt,
-		CreatedAt:        time.Now(),
-		UpdatedAt:        time.Now(),
+		ID:              uuid.NewString(),
+		VideoID:         videoID,
+		UploadID:        uploadID,
+		StorageBucket:   s.rawBucket,
+		StorageKey:      storageKey,
+		FileFingerprint: req.FileFingerprint,
+		TotalSizeBytes:  req.FileSize,
+		PartSizeBytes:   partSize,
+		TotalParts:      totalParts,
+		Status:          video.SessionStatusUploading,
+		ExpiresAt:       expiresAt,
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
 	}
 	if err := s.sessionRepo.SaveSession(ctx, session); err != nil {
 		_ = s.storageProvider.AbortMultipartUpload(ctx, s.rawBucket, storageKey, uploadID)

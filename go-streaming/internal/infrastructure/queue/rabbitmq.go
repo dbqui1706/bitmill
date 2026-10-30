@@ -341,20 +341,35 @@ func (r *RabbitMQAdapter) ConsumeTranscodeJobs(ctx context.Context, handler func
 		return fmt.Errorf("failed to set prefetch QoS: %w", err)
 	}
 
+	consumerTag := fmt.Sprintf("worker-%d", time.Now().UnixNano())
 	msgs, err := consumeChannel.Consume(
 		r.cfg.Queue,
-		"",    // consumer tag auto-generated
-		false, // autoAck = FALSE (strict manual ACK)
-		false, // exclusive
-		false, // no-local
-		false, // no-wait
+		consumerTag, // explicit consumer tag for cancellation
+		false,       // autoAck = FALSE (strict manual ACK)
+		false,       // exclusive
+		false,       // no-local
+		false,       // no-wait
 		nil,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to start consuming from queue %s: %w", r.cfg.Queue, err)
 	}
 
-	r.log.Info("Worker consumer started listening on queue %s (Prefetch=%d)", r.cfg.Queue, r.cfg.PrefetchCount)
+	r.log.Info("Worker consumer started listening on queue %s (Prefetch=%d, Tag=%s)", r.cfg.Queue, r.cfg.PrefetchCount, consumerTag)
+
+	// Monitor context cancellation to cancel consumer tag (stop pulling new messages)
+	stopChan := make(chan struct{})
+	defer close(stopChan)
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			r.log.Warn("Termination context triggered: cancelling AMQP consumer to halt new message delivery...")
+			_ = consumeChannel.Cancel(consumerTag, false)
+		case <-stopChan:
+			return
+		}
+	}()
 
 	for {
 		select {
@@ -363,8 +378,8 @@ func (r *RabbitMQAdapter) ConsumeTranscodeJobs(ctx context.Context, handler func
 			return ctx.Err()
 		case d, ok := <-msgs:
 			if !ok {
-				r.log.Warn("AMQP deliveries channel closed")
-				return errors.New("amqp deliveries channel closed")
+				r.log.Warn("AMQP deliveries channel closed (consumer drained cleanly)")
+				return nil
 			}
 
 			var job video.TranscodeJobMessage
@@ -377,8 +392,11 @@ func (r *RabbitMQAdapter) ConsumeTranscodeJobs(ctx context.Context, handler func
 			r.log.Info("Received transcode job from queue (VideoID=%s, JobID=%s, Attempt=%d/%d)",
 				job.VideoID, job.JobID, job.AttemptCount, job.MaxAttempts)
 
-			// Execute handler
-			jobErr := handler(ctx, &job)
+			// Execute handler with grace timeout for active job (110s max)
+			jobCtx, jobCancel := context.WithTimeout(context.Background(), 110*time.Second)
+			jobErr := handler(jobCtx, &job)
+			jobCancel()
+
 			if jobErr == nil {
 				// Success: Manual Ack
 				if err := d.Ack(false); err != nil {
@@ -387,6 +405,13 @@ func (r *RabbitMQAdapter) ConsumeTranscodeJobs(ctx context.Context, handler func
 					r.log.Info("Successfully acknowledged job (VideoID=%s, JobID=%s)", job.VideoID, job.JobID)
 				}
 				continue
+			}
+
+			// If job timed out because of worker shutdown deadline, requeue message safely
+			if errors.Is(jobErr, context.DeadlineExceeded) || errors.Is(jobCtx.Err(), context.DeadlineExceeded) {
+				r.log.Warn("Job processing deadline exceeded during shutdown, nacking with requeue=true: VideoID=%s", job.VideoID)
+				_ = d.Nack(false, true)
+				return ctx.Err()
 			}
 
 			// Handle Failure:
@@ -421,8 +446,7 @@ func isPermanentFailure(err error) bool {
 	s := err.Error()
 	return errors.Is(err, video.ErrInvalidInput) ||
 		errors.Is(err, video.ErrVideoNotFound) ||
-		len(s) > 0 && (
-			containsAny(s, "corrupt", "unsupported", "invalid format", "moov atom not found", "no streams found", "permanent"))
+		len(s) > 0 && (containsAny(s, "corrupt", "unsupported", "invalid format", "moov atom not found", "no streams found", "permanent"))
 }
 
 func containsAny(s string, substrs ...string) bool {
