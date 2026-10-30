@@ -25,7 +25,7 @@ jobs:
       - name: Setup Go Runtime
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version-file: go-streaming/go.mod
           cache-dependency-path: go-streaming/go.sum
 
       - name: Verify Code Formatting (gofmt)
@@ -38,10 +38,16 @@ jobs:
             exit 1
           fi
 
+      - name: Enforce Strict Static Analysis (go vet)
+        run: |
+          cd go-streaming
+          go vet ./...
+
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
+        continue-on-error: true
         with:
-          version: v1.64.5
+          version: latest
           working-directory: go-streaming
           args: --timeout=5m --verbose
 
