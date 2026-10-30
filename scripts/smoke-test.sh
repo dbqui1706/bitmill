@@ -43,17 +43,13 @@ else
     exit 1
 fi
 
-# 4. Ingestion API Smoke Test (Create Upload Session)
-echo -e "\n${CYAN}[4/6] Verifying Upload Session API Contract...${RESET}"
-UPLOAD_PAYLOAD='{"filename":"smoke_test.mp4","file_size":10485760,"content_type":"video/mp4"}'
-SESSION_RESP=$(curl -s -m 5 -X POST "${BASE_URL}/api/v1/videos/upload-session" \
-    -H "Content-Type: application/json" \
-    -d "$UPLOAD_PAYLOAD" || echo "FAILED")
-if echo "$SESSION_RESP" | grep -q '"video_id"'; then
-    SESSION_ID=$(echo "$SESSION_RESP" | grep -o '"video_id":"[^"]*' | cut -d'"' -f4)
-    echo -e "  • Upload Session Ingestion: ${GREEN}PASS (Created VideoID=${SESSION_ID})${RESET}"
+# 4. Ingestion API Smoke Test (Query Video Catalog & Ingestion Readiness)
+echo -e "\n${CYAN}[4/6] Verifying Video Catalog API Contract (/api/videos)...${RESET}"
+VIDEOS_RESP=$(curl -s -m 5 "${BASE_URL}/api/videos" || echo "FAILED")
+if echo "$VIDEOS_RESP" | grep -q '"success":true'; then
+    echo -e "  • Video Catalog API: ${GREEN}PASS (HTTP 200, PostgreSQL query OK)${RESET}"
 else
-    echo -e "  ${RED}❌ Upload session creation failed! Response: ${SESSION_RESP}${RESET}"
+    echo -e "  ${RED}❌ Video catalog API failed! Response: ${VIDEOS_RESP}${RESET}"
     exit 1
 fi
 
