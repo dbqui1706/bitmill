@@ -49,4 +49,8 @@ docker-volumes/
 logs/*.log
 go-streaming/logs/*.log
 
+# Local SSL Certificates & Keys
+environment/nginx/certs/*.key
+environment/nginx/certs/*.crt
+
 
