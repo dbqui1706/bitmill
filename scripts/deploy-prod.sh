@@ -161,9 +161,19 @@ upstream bitmill_api {
 }
 EOF
 
-# Ensure Gateway container is running
-if ! docker ps --format '{{.Names}}' | grep -q 'bitmill-prod-gateway'; then
-    echo -e "  • Gateway not running; starting Gateway stack..."
+# Ensure TLS certificates exist for Cloudflare HTTPS Ingress
+if [ ! -f "${ROOT_DIR}/environment/nginx/certs/bitmill.crt" ] || [ ! -f "${ROOT_DIR}/environment/nginx/certs/bitmill.key" ]; then
+    echo -e "  • Generating self-signed TLS certificates for Cloudflare edge ingress..."
+    mkdir -p "${ROOT_DIR}/environment/nginx/certs"
+    openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+        -keyout "${ROOT_DIR}/environment/nginx/certs/bitmill.key" \
+        -out "${ROOT_DIR}/environment/nginx/certs/bitmill.crt" \
+        -subj '/CN=devlungtung.htcwood.com' >/dev/null 2>&1 || true
+fi
+
+# Ensure Gateway container is running with valid config
+if ! docker ps --format '{{.Names}}' | grep -q 'bitmill-prod-gateway' || ! docker compose --env-file .env -f "${COMPOSE_FILE}" exec -T gateway nginx -t >/dev/null 2>&1; then
+    echo -e "  • Starting/recreating Gateway container..."
     docker compose --env-file .env -f "${COMPOSE_FILE}" up -d gateway
 fi
 
