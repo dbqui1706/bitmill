@@ -9,8 +9,8 @@ GREEN := \033[32m
 RESET := \033[0m
 
 # Tool paths (fallback to GOPATH if not in global PATH)
-GOOSE := $(shell which goose 2>/dev/null || echo "$$(go env GOPATH)/bin/goose")
-SQLC  := $(shell which sqlc 2>/dev/null || echo "$$(go env GOPATH)/bin/sqlc")
+GOOSE := $(shell which goose 2>/dev/null || (command -v go >/dev/null 2>&1 && echo "$$(go env GOPATH)/bin/goose") || echo "goose")
+SQLC  := $(shell which sqlc 2>/dev/null || (command -v go >/dev/null 2>&1 && echo "$$(go env GOPATH)/bin/sqlc") || echo "sqlc")
 
 # Database connection
 DB_DSN ?= postgres://bitmill_user:bitmill_password@localhost:5432/bitmill_media?sslmode=disable
