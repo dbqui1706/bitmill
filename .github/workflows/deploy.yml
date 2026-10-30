@@ -42,7 +42,7 @@ jobs:
         run: |
           echo "Connecting to production VPS at ${VPS_HOST} as ${VPS_USER}..."
           ssh -o StrictHostKeyChecking=accept-new ${VPS_USER}@${VPS_HOST} \
-            "cd /opt/bitmill && git pull origin main && bash scripts/deploy-prod.sh --sha ${TARGET_SHA} --token ${GHCR_PAT}"
+            "cd ~/bitmill && git pull origin main && bash scripts/deploy-prod.sh --sha ${TARGET_SHA} --token ${GHCR_PAT}"
 
       - name: Synthetic Public Gateway Ingress Verification
         run: |
