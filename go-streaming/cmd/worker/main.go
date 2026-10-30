@@ -154,11 +154,8 @@ func main() {
 
 	go func() {
 		sig := <-sigChan
-		log.Warn("Received termination signal (%v), initiating graceful shutdown...", sig)
+		log.Warn("Received termination signal (%v), initiating graceful worker drain...", sig)
 		cancel()
-		// Allow up to 30 seconds for in-flight transcode job to finish or abort safely
-		time.Sleep(1 * time.Second)
-		_ = rabbitMQAdapter.Close()
 	}()
 
 	// 8. [Start Consumer Loop]

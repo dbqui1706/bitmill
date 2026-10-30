@@ -56,7 +56,7 @@ type ffprobeFormat struct {
 
 type ffprobeJSON struct {
 	Streams []ffprobeStream `json:"streams"`
-	Format  ffprobeFormat  `json:"format"`
+	Format  ffprobeFormat   `json:"format"`
 }
 
 // ProbeMedia extracts media duration, codecs, bitrate, and dimensions using ffprobe inside Docker

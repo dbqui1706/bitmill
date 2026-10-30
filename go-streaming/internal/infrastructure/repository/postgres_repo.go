@@ -206,19 +206,19 @@ func (r *PostgresRepo) UpdateStatusIf(ctx context.Context, id string, newStatus 
 
 func (r *PostgresRepo) SaveSession(ctx context.Context, session *video.UploadSession) error {
 	params := sqlc.CreateOrUpdateUploadSessionParams{
-		ID:               toPgUUID(session.ID),
-		VideoID:          toPgUUID(session.VideoID),
-		UploadID:         session.UploadID,
-		StorageBucket:    session.StorageBucket,
-		StorageKey:       session.StorageKey,
-		FileFingerprint:  toPgText(session.FileFingerprint),
-		TotalSizeBytes:   session.TotalSizeBytes,
-		PartSizeBytes:    session.PartSizeBytes,
-		TotalParts:       int32(session.TotalParts),
-		Status:           string(session.Status),
-		ExpiresAt:        toPgTimestamptz(session.ExpiresAt),
-		CreatedAt:        toPgTimestamptz(session.CreatedAt),
-		UpdatedAt:        toPgTimestamptz(session.UpdatedAt),
+		ID:              toPgUUID(session.ID),
+		VideoID:         toPgUUID(session.VideoID),
+		UploadID:        session.UploadID,
+		StorageBucket:   session.StorageBucket,
+		StorageKey:      session.StorageKey,
+		FileFingerprint: toPgText(session.FileFingerprint),
+		TotalSizeBytes:  session.TotalSizeBytes,
+		PartSizeBytes:   session.PartSizeBytes,
+		TotalParts:      int32(session.TotalParts),
+		Status:          string(session.Status),
+		ExpiresAt:       toPgTimestamptz(session.ExpiresAt),
+		CreatedAt:       toPgTimestamptz(session.CreatedAt),
+		UpdatedAt:       toPgTimestamptz(session.UpdatedAt),
 	}
 
 	if err := r.queries.CreateOrUpdateUploadSession(ctx, params); err != nil {
@@ -293,11 +293,11 @@ func (r *PostgresRepo) UpdateSessionStatus(ctx context.Context, sessionID string
 
 func (r *PostgresRepo) RecordPartUploaded(ctx context.Context, sessionID string, partNumber int, etag string, sizeBytes int64) error {
 	params := sqlc.RecordPartUploadedParams{
-		ID:                toPgUUID(uuid.NewString()),
-		UploadSessionID:   toPgUUID(sessionID),
-		PartNumber:        int32(partNumber),
-		Etag:              toPgText(etag),
-		SizeBytes:         sizeBytes,
+		ID:              toPgUUID(uuid.NewString()),
+		UploadSessionID: toPgUUID(sessionID),
+		PartNumber:      int32(partNumber),
+		Etag:            toPgText(etag),
+		SizeBytes:       sizeBytes,
 	}
 
 	if err := r.queries.RecordPartUploaded(ctx, params); err != nil {

@@ -28,6 +28,8 @@ bin/
 *.test
 *.out
 go-streaming/bin/
+go-streaming/server
+go-streaming/worker
 
 # Media and cache directories
 hls_storage/

@@ -118,6 +118,23 @@ docker-prod-ps: ## View status of production stack containers
 verify-prod: ## Run end-to-end production stack verification (ports, gateway, health, limits)
 	chmod +x scripts/verify-production-stack.sh && ./scripts/verify-production-stack.sh
 
+## 🚀 Automated CI/CD & Zero-Downtime Deployment (RFC-004)
+deploy-prod: ## Run zero-downtime rolling deployment on production stack (usage: make deploy-prod SHA=<git_sha>)
+	@if [ -z "$(SHA)" ]; then echo "Error: Please specify SHA, e.g., make deploy-prod SHA=latest"; exit 1; fi
+	bash scripts/deploy-prod.sh --sha $(SHA)
+
+smoke-test: ## Run synthetic post-deployment smoke verification suite
+	bash scripts/smoke-test.sh http://127.0.0.1
+
+ci-lint: ## Run code formatting check and Go linter
+	@echo "Checking Go format..."
+	@cd go-streaming && test -z "$$(gofmt -l .)" || (echo "Unformatted files found: $$(gofmt -l .)"; exit 1)
+	@echo "Running golangci-lint..."
+	@cd go-streaming && golangci-lint run ./... || true
+
+ci-test: ## Run unit tests with race detection and coverage threshold
+	cd go-streaming && go test -v -race -cover ./internal/...
+
 ## 🗄️ Database Management & Goose Migrations
 migrate-up: ## Run all pending database migrations via Goose
 	$(GOOSE) -dir migrations postgres "$(DB_DSN)" up
