@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	transcoderAPI "google.golang.org/api/transcoder/v1"
 	"google.golang.org/api/option"
+	transcoderAPI "google.golang.org/api/transcoder/v1"
 	"quidb.dev/go-streaming/internal/domain/video"
 )
 
