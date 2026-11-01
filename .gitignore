@@ -53,4 +53,10 @@ go-streaming/logs/*.log
 environment/nginx/certs/*.key
 environment/nginx/certs/*.crt
 
+# Google Cloud Service Account Keys & Secrets
+*credentials*.json
+gcp-*.json
+*.key.json
+
+
 
