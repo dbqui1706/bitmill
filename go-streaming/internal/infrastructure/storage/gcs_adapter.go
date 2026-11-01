@@ -36,6 +36,13 @@ type serviceAccountFile struct {
 	PrivateKey  string `json:"private_key"`
 }
 
+type gcpCredentialInfo struct {
+	clientOption    option.ClientOption
+	clientEmail     string
+	privateKeyBytes []byte
+	projectID       string
+}
+
 func resolveCredentialsPath(path string) string {
 	if path == "" {
 		return ""
@@ -52,6 +59,48 @@ func resolveCredentialsPath(path string) string {
 	return path
 }
 
+func loadGCPCredentials(credentialsFile string) (*gcpCredentialInfo, error) {
+	// 1. Priority 1: In-Memory JSON from Environment Variable (Zero File on Disk)
+	if envJSON := os.Getenv("GCP_CREDENTIALS_JSON"); strings.TrimSpace(envJSON) != "" {
+		var sa serviceAccountFile
+		if err := json.Unmarshal([]byte(envJSON), &sa); err != nil {
+			return nil, fmt.Errorf("failed to parse GCP_CREDENTIALS_JSON environment variable: %w", err)
+		}
+		return &gcpCredentialInfo{
+			clientOption:    option.WithCredentialsJSON([]byte(envJSON)),
+			clientEmail:     sa.ClientEmail,
+			privateKeyBytes: []byte(sa.PrivateKey),
+			projectID:       sa.ProjectID,
+		}, nil
+	}
+
+	// 2. Priority 2: Standard Google Cloud Environment Variable or Config Path
+	targetPath := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
+	if targetPath == "" {
+		targetPath = credentialsFile
+	}
+
+	if targetPath != "" {
+		resolvedPath := resolveCredentialsPath(targetPath)
+		if data, err := os.ReadFile(resolvedPath); err == nil {
+			var sa serviceAccountFile
+			if err := json.Unmarshal(data, &sa); err == nil {
+				return &gcpCredentialInfo{
+					clientOption:    option.WithCredentialsFile(resolvedPath),
+					clientEmail:     sa.ClientEmail,
+					privateKeyBytes: []byte(sa.PrivateKey),
+					projectID:       sa.ProjectID,
+				}, nil
+			}
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("failed to read GCP credentials file at %s: %w", targetPath, err)
+		}
+	}
+
+	// 3. Priority 3: Fallback to ADC (Application Default Credentials via gcloud or metadata server)
+	return nil, nil
+}
+
 // NewGCSStorageAdapter initializes a Google Cloud Storage client with Service Account credentials
 func NewGCSStorageAdapter(ctx context.Context, credentialsFile, projectID, publicDomain string) (*GCSStorageAdapter, error) {
 	var opts []option.ClientOption
@@ -59,25 +108,18 @@ func NewGCSStorageAdapter(ctx context.Context, credentialsFile, projectID, publi
 	var clientEmail string
 	var privateKeyBytes []byte
 
-	resolvedCreds := resolveCredentialsPath(credentialsFile)
-	if resolvedCreds != "" {
-		data, err := os.ReadFile(resolvedCreds)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read GCP credentials file at %s: %w", credentialsFile, err)
-		}
+	credInfo, err := loadGCPCredentials(credentialsFile)
+	if err != nil {
+		return nil, err
+	}
 
-		var sa serviceAccountFile
-		if err := json.Unmarshal(data, &sa); err != nil {
-			return nil, fmt.Errorf("failed to parse GCP service account credentials: %w", err)
-		}
-
-		clientEmail = sa.ClientEmail
-		privateKeyBytes = []byte(sa.PrivateKey)
+	if credInfo != nil {
+		opts = append(opts, credInfo.clientOption)
+		clientEmail = credInfo.clientEmail
+		privateKeyBytes = credInfo.privateKeyBytes
 		if projectID == "" {
-			projectID = sa.ProjectID
+			projectID = credInfo.projectID
 		}
-
-		opts = append(opts, option.WithCredentialsFile(resolvedCreds))
 	}
 
 	client, err := storage.NewClient(ctx, opts...)
