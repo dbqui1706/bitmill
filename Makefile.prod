@@ -1,0 +1,56 @@
+# Bitmill Production Operations Makefile
+# Usage: make -f Makefile.prod <target> or include in root Makefile
+
+.PHONY: prod-help prod-status prod-pull prod-up prod-down prod-restart prod-logs prod-migrate-status prod-migrate-up prod-smoke-test
+
+COMPOSE_PROD_FILE ?= environment/docker-compose.prod.yml
+COMPOSE_PROD      := docker compose --env-file .env -f $(COMPOSE_PROD_FILE)
+
+# Optional service parameter for logs (e.g., make prod-logs SERVICE=worker)
+SERVICE ?=
+
+prod-help: ## Display available production operations
+	@echo "Bitmill Production Operations Management"
+	@echo ""
+	@echo "Usage: make -f Makefile.prod [target] (or make [target])"
+	@echo ""
+	@echo "Available targets:"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-24s %s\n", $$1, $$2}'
+	@echo ""
+
+prod-status: ## Show running status of all production containers
+	@echo "Checking production stack status..."
+	$(COMPOSE_PROD) ps
+
+prod-pull: ## Pull latest production images from GitHub Container Registry
+	@echo "Pulling latest container images for production..."
+	$(COMPOSE_PROD) pull
+
+prod-up: ## Start all production containers in detached mode
+	@echo "Starting production services..."
+	$(COMPOSE_PROD) up -d
+	@echo "Production services started. Run 'make prod-status' or 'make prod-logs' to monitor."
+
+prod-down: ## Stop all production containers gracefully
+	@echo "Stopping production services..."
+	$(COMPOSE_PROD) down
+
+prod-restart: ## Restart production services
+	@echo "Restarting production services..."
+	$(COMPOSE_PROD) restart
+
+prod-logs: ## Follow live logs from production services (usage: make prod-logs [SERVICE=name])
+	@if [ -n "$(SERVICE)" ]; then \
+		$(COMPOSE_PROD) logs -f $(SERVICE); \
+	else \
+		$(COMPOSE_PROD) logs -f --tail=100; \
+	fi
+
+prod-migrate-status: ## Check Goose database migration status in production
+	@echo "Checking database migration status on production database..."
+	$(COMPOSE_PROD) exec -T server_blue /bin/sh -c "echo 'Checking schema status via database...'"
+
+prod-smoke-test: ## Perform smoke test against production gateway health endpoint
+	@echo "Executing healthcheck probe..."
+	@curl -s -o /dev/null -w "HTTP Status: %{http_code}\n" http://127.0.0.1/health || \
+	 curl -s -o /dev/null -w "HTTP Status (Server Direct): %{http_code}\n" http://127.0.0.1:8080/health

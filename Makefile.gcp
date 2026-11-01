@@ -1,0 +1,57 @@
+# Bitmill Google Cloud Platform Management Makefile
+# Usage: make -f Makefile.gcp <target> or include in root Makefile
+
+.PHONY: gcp-help gcp-list-buckets gcp-check-iam gcp-apply-cors gcp-apply-lifecycle gcp-verify-transcoder
+
+PROJECT_ID ?= bitmill-project
+REGION ?= asia-southeast1
+
+DEV_RAW_BUCKET ?= bitmill-raw-videos-dev
+DEV_PROCESSED_BUCKET ?= bitmill-processed-videos-dev
+PROD_RAW_BUCKET ?= bitmill-raw-videos-prod
+PROD_PROCESSED_BUCKET ?= bitmill-processed-videos-prod
+
+TRANSCODER_SA ?= service-545369635763@gcp-sa-transcoder.iam.gserviceaccount.com
+
+gcp-help: ## Display available GCP management commands
+	@echo "Bitmill Google Cloud Platform Management"
+	@echo ""
+	@echo "Usage: make -f Makefile.gcp [target] (or make [target])"
+	@echo ""
+	@echo "Available targets:"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-24s %s\n", $$1, $$2}'
+	@echo ""
+
+gcp-list-buckets: ## List all GCS buckets in the project
+	@echo "Listing GCS buckets in project $(PROJECT_ID)..."
+	gcloud storage buckets list --project=$(PROJECT_ID)
+
+gcp-check-iam: ## Verify Transcoder Service Agent permissions on buckets
+	@echo "Checking IAM bindings for Transcoder Service Agent: $(TRANSCODER_SA)"
+	@echo "--- Dev Raw Bucket ---"
+	gcloud storage buckets get-iam-policy gs://$(DEV_RAW_BUCKET) --format="yaml(bindings)"
+	@echo "--- Dev Processed Bucket ---"
+	gcloud storage buckets get-iam-policy gs://$(DEV_PROCESSED_BUCKET) --format="yaml(bindings)"
+	@echo "--- Prod Raw Bucket ---"
+	gcloud storage buckets get-iam-policy gs://$(PROD_RAW_BUCKET) --format="yaml(bindings)"
+	@echo "--- Prod Processed Bucket ---"
+	gcloud storage buckets get-iam-policy gs://$(PROD_PROCESSED_BUCKET) --format="yaml(bindings)"
+
+gcp-apply-cors: ## Apply CORS configuration to dev and prod buckets
+	@echo "Applying CORS to Dev buckets..."
+	gcloud storage buckets update gs://$(DEV_RAW_BUCKET) --cors-file=environment/gcp/cors-dev.json
+	gcloud storage buckets update gs://$(DEV_PROCESSED_BUCKET) --cors-file=environment/gcp/cors-dev.json
+	@echo "Applying CORS to Prod buckets..."
+	gcloud storage buckets update gs://$(PROD_RAW_BUCKET) --cors-file=environment/gcp/cors-prod-raw.json
+	gcloud storage buckets update gs://$(PROD_PROCESSED_BUCKET) --cors-file=environment/gcp/cors-prod-processed.json
+	@echo "CORS configuration updated successfully."
+
+gcp-apply-lifecycle: ## Apply 7-day auto-deletion lifecycle to raw buckets
+	@echo "Applying lifecycle policy to Dev and Prod raw buckets..."
+	gcloud storage buckets update gs://$(DEV_RAW_BUCKET) --lifecycle-file=environment/gcp/lifecycle-raw.json
+	gcloud storage buckets update gs://$(PROD_RAW_BUCKET) --lifecycle-file=environment/gcp/lifecycle-raw.json
+	@echo "Lifecycle configuration updated successfully."
+
+gcp-verify-transcoder: ## Check GCP Transcoder API service status
+	@echo "Verifying Transcoder API is enabled..."
+	gcloud services list --enabled --project=$(PROJECT_ID) --filter="NAME:transcoder.googleapis.com"

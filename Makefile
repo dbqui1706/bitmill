@@ -167,4 +167,9 @@ sqlc: ## Generate type-safe Go database code from migrations using sqlc
 clean: ## Remove build binaries and temporary artifacts
 	rm -rf go-streaming/bin/
 	rm -rf go-streaming/tmp/
-	@echo "✅ Cleaned build artifacts."
+	@echo "Cleaned build artifacts."
+
+# Include modular sub-makefiles
+-include Makefile.gcp
+-include Makefile.prod
+
