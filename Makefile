@@ -59,6 +59,9 @@ verify-r2: test-e2e ## Alias for test-e2e
 verify-worker: ## Execute live end-to-end integration test for RabbitMQ worker & FFmpeg transcoding
 	cd go-streaming && go run cmd/verify_transcoder_worker/main.go
 
+verify-gcp: ## Execute live end-to-end integration test for GCP (GCS Storage & Serverless Transcoder)
+	cd go-streaming && go run cmd/verify_gcp_pipeline/main.go
+
 ## 🌿 Git Worktree Isolation Workflow
 worktree-create: ## Create an isolated worktree (usage: make worktree-create NAME=milestone-5)
 	@if [ -z "$(NAME)" ]; then echo "Error: Please specify NAME, e.g., make worktree-create NAME=milestone-5"; exit 1; fi

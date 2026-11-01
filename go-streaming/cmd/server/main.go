@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	videoApp "quidb.dev/go-streaming/internal/application/video"
 	"quidb.dev/go-streaming/internal/config"
+	"quidb.dev/go-streaming/internal/domain/video"
 	"quidb.dev/go-streaming/internal/infrastructure/queue"
 	"quidb.dev/go-streaming/internal/infrastructure/repository"
 	"quidb.dev/go-streaming/internal/infrastructure/storage"
@@ -67,19 +68,47 @@ func main() {
 	}
 	log.Info("Connected to PostgreSQL successfully at %s:%d (DB: %s)", cfg.Database.Host, cfg.Database.Port, cfg.Database.DBName)
 
-	// 3. [Storage Provider (Cloudflare R2 Adapter)]
-	r2Adapter, err := storage.NewR2Adapter(
-		ctx,
-		cfg.Storage.R2.AccountID,
-		cfg.Storage.R2.AccessKeyID,
-		cfg.Storage.R2.SecretAccessKey,
-		cfg.Storage.R2.PublicDomain,
-	)
-	if err != nil {
-		log.Error("Failed to initialize Cloudflare R2 Adapter: %v", err)
-		os.Exit(1)
+	// 3. [Storage Provider (IoC: GCS vs Cloudflare R2)]
+	var storageProvider video.StorageProvider
+	var rawBucket string
+	var processedBucket string
+	var publicDomain string
+
+	if cfg.Storage.Provider == "gcs" || (cfg.Storage.Provider == "" && cfg.Storage.GCP.ProjectID != "") {
+		gcsAdapter, err := storage.NewGCSStorageAdapter(
+			ctx,
+			cfg.Storage.GCP.CredentialsFile,
+			cfg.Storage.GCP.ProjectID,
+			cfg.Storage.GCP.PublicDomain,
+		)
+		if err != nil {
+			log.Error("Failed to initialize Google Cloud Storage (GCS) Adapter: %v", err)
+			os.Exit(1)
+		}
+		defer gcsAdapter.Close()
+		storageProvider = gcsAdapter
+		rawBucket = cfg.Storage.GCP.RawBucket
+		processedBucket = cfg.Storage.GCP.ProcessedBucket
+		publicDomain = cfg.Storage.GCP.PublicDomain
+		log.Info("Google Cloud Storage (GCS) Adapter initialized successfully (Raw: %s, Processed: %s)", rawBucket, processedBucket)
+	} else {
+		r2Adapter, err := storage.NewR2Adapter(
+			ctx,
+			cfg.Storage.R2.AccountID,
+			cfg.Storage.R2.AccessKeyID,
+			cfg.Storage.R2.SecretAccessKey,
+			cfg.Storage.R2.PublicDomain,
+		)
+		if err != nil {
+			log.Error("Failed to initialize Cloudflare R2 Adapter: %v", err)
+			os.Exit(1)
+		}
+		storageProvider = r2Adapter
+		rawBucket = cfg.Storage.R2.RawBucket
+		processedBucket = cfg.Storage.R2.ProcessedBucket
+		publicDomain = cfg.Storage.R2.PublicDomain
+		log.Info("Cloudflare R2 Adapter initialized successfully (Bucket: %s)", rawBucket)
 	}
-	log.Info("Cloudflare R2 Adapter initialized successfully (Bucket: %s)", cfg.Storage.R2.RawBucket)
 
 	// 4. [Repositories]
 	pgRepo := repository.NewPostgresRepo(pgPool)
@@ -92,7 +121,7 @@ func main() {
 
 	// 5. [Application Services]
 	legacyService := videoApp.NewService(pgRepo, ffmpegTranscoder, hlsDir, cfg.Server.BaseURL, log)
-	uploadService := videoApp.NewUploadService(pgRepo, pgRepo, r2Adapter, cfg.Storage.R2.RawBucket, 2*time.Hour, log)
+	uploadService := videoApp.NewUploadService(pgRepo, pgRepo, storageProvider, rawBucket, 2*time.Hour, log)
 
 	// 5.1 [RabbitMQ Event Dispatcher - Milestone 4]
 	queueCfg := queue.RabbitMQConfig{
@@ -109,8 +138,8 @@ func main() {
 		log.Warn("RabbitMQ connection failed: %v. Transcode events will not be dispatched.", err)
 	} else {
 		defer rabbitMQAdapter.Close()
-		uploadService.SetTranscodingQueue(pgRepo, rabbitMQAdapter, cfg.Storage.R2.ProcessedBucket)
-		legacyService.SetTranscodingQueue(pgRepo, rabbitMQAdapter, cfg.Storage.R2.ProcessedBucket)
+		uploadService.SetTranscodingQueue(pgRepo, rabbitMQAdapter, processedBucket)
+		legacyService.SetTranscodingQueue(pgRepo, rabbitMQAdapter, processedBucket)
 		log.Info("RabbitMQ Event Dispatcher wired to UploadService and Service (Exchange: %s)", cfg.RabbitMQ.Exchange)
 	}
 
@@ -173,6 +202,11 @@ func main() {
 
 	uploadHandler := deliveryHTTP.NewUploadHandler(uploadService, log)
 	uploadHandler.RegisterRoutes(router)
+
+	// 7.3 [GCP Cloud Transcoder & Pub/Sub Webhook Handler]
+	gcpWebhookHandler := deliveryHTTP.NewGCPWebhookHandler(pgRepo, pgRepo, pgRepo, publicDomain, log)
+	gcpWebhookHandler.RegisterRoutes(router.Group("/api/v1"))
+	log.Info("👉 GCP Transcoder Webhook: %s/api/v1/webhooks/gcp-transcoder", cfg.Server.BaseURL)
 
 	httpAddr := fmt.Sprintf(":%d", cfg.Server.HTTPPort)
 	log.Info("HTTP Gin Server listening on: %s%s", cfg.Server.BaseURL, httpAddr)
