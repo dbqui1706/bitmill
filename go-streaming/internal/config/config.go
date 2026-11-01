@@ -25,10 +25,23 @@ type R2Config struct {
 	PublicDomain    string `mapstructure:"public_domain" yaml:"public_domain"`
 }
 
+type GCPConfig struct {
+	ProjectID          string `mapstructure:"project_id" yaml:"project_id"`
+	Region             string `mapstructure:"region" yaml:"region"`
+	CredentialsFile    string `mapstructure:"credentials_file" yaml:"credentials_file"`
+	RawBucket          string `mapstructure:"raw_bucket" yaml:"raw_bucket"`
+	ProcessedBucket    string `mapstructure:"processed_bucket" yaml:"processed_bucket"`
+	PublicDomain       string `mapstructure:"public_domain" yaml:"public_domain"`
+	PubSubTopic        string `mapstructure:"pubsub_topic" yaml:"pubsub_topic"`
+	PubSubSubscription string `mapstructure:"pubsub_subscription" yaml:"pubsub_subscription"`
+}
+
 type StorageConfig struct {
-	RootDir string   `mapstructure:"root_dir" yaml:"root_dir"`
-	HLSDir  string   `mapstructure:"hls_dir" yaml:"hls_dir"`
-	R2      R2Config `mapstructure:"r2" yaml:"r2"`
+	Provider string    `mapstructure:"provider" yaml:"provider"` // "gcs" or "r2"
+	RootDir  string    `mapstructure:"root_dir" yaml:"root_dir"`
+	HLSDir   string    `mapstructure:"hls_dir" yaml:"hls_dir"`
+	R2       R2Config  `mapstructure:"r2" yaml:"r2"`
+	GCP      GCPConfig `mapstructure:"gcp" yaml:"gcp"`
 }
 
 type TranscoderConfig struct {
@@ -97,9 +110,19 @@ func LoadConfig(customPaths ...string) (*Config, error) {
 	v.SetDefault("server.http_port", 8080)
 	v.SetDefault("server.rtmp_port", 1935)
 	v.SetDefault("server.base_url", "http://localhost:8080")
+	v.SetDefault("storage.provider", "gcs")
 	v.SetDefault("storage.root_dir", "..")
 	v.SetDefault("storage.hls_dir", "../hls_storage")
-	v.SetDefault("transcoder.type", "docker")
+	v.SetDefault("storage.gcp.project_id", "bitmill-project")
+	v.SetDefault("storage.gcp.region", "asia-southeast1")
+	v.SetDefault("storage.gcp.credentials_file", "credentials.json")
+	v.SetDefault("storage.gcp.raw_bucket", "bitmill-raw-videos")
+	v.SetDefault("storage.gcp.processed_bucket", "bitmill-processed-videos")
+	v.SetDefault("storage.gcp.public_domain", "https://storage.googleapis.com/bitmill-processed-videos")
+	v.SetDefault("storage.gcp.pubsub_topic", "bitmill-transcoder-events")
+	v.SetDefault("storage.gcp.pubsub_subscription", "bitmill-transcoder-events-sub")
+
+	v.SetDefault("transcoder.type", "gcp")
 	v.SetDefault("transcoder.ffmpeg_path", "ffmpeg")
 	v.SetDefault("transcoder.ffprobe_path", "ffprobe")
 	v.SetDefault("transcoder.docker_image", "mwader/static-ffmpeg:latest")
@@ -128,6 +151,34 @@ func LoadConfig(customPaths ...string) (*Config, error) {
 	}
 
 	// 3. Fallback to standard environment variables if not present in config.yaml
+	if val := os.Getenv("STORAGE_PROVIDER"); val != "" {
+		cfg.Storage.Provider = val
+	}
+	if val := os.Getenv("GCP_PROJECT_ID"); val != "" {
+		cfg.Storage.GCP.ProjectID = val
+	}
+	if val := os.Getenv("GCP_REGION"); val != "" {
+		cfg.Storage.GCP.Region = val
+	}
+	if val := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"); val != "" {
+		cfg.Storage.GCP.CredentialsFile = val
+	}
+	if val := os.Getenv("GCS_RAW_BUCKET"); val != "" {
+		cfg.Storage.GCP.RawBucket = val
+	}
+	if val := os.Getenv("GCS_PROCESSED_BUCKET"); val != "" {
+		cfg.Storage.GCP.ProcessedBucket = val
+	}
+	if val := os.Getenv("GCS_PUBLIC_DOMAIN"); val != "" {
+		cfg.Storage.GCP.PublicDomain = val
+	}
+	if val := os.Getenv("GCP_PUBSUB_TOPIC"); val != "" {
+		cfg.Storage.GCP.PubSubTopic = val
+	}
+	if val := os.Getenv("GCP_PUBSUB_SUBSCRIPTION"); val != "" {
+		cfg.Storage.GCP.PubSubSubscription = val
+	}
+
 	if val := os.Getenv("CLOUDFLARE_ACCOUNT_ID"); val != "" && cfg.Storage.R2.AccountID == "" {
 		cfg.Storage.R2.AccountID = val
 	}

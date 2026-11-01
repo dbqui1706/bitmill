@@ -52,24 +52,64 @@ func main() {
 	}
 	log.Info("Connected to PostgreSQL at %s:%d (DB: %s)", cfg.Database.Host, cfg.Database.Port, cfg.Database.DBName)
 
-	// 3. [Storage Provider]: Cloudflare R2 S3 Adapter
-	r2Adapter, err := storage.NewR2Adapter(
-		ctx,
-		cfg.Storage.R2.AccountID,
-		cfg.Storage.R2.AccessKeyID,
-		cfg.Storage.R2.SecretAccessKey,
-		cfg.Storage.R2.PublicDomain,
-	)
-	if err != nil {
-		log.Error("Failed to initialize Cloudflare R2 Adapter: %v", err)
-		os.Exit(1)
-	}
-	log.Info("Cloudflare R2 Adapter connected (Raw: %s, Processed: %s)",
-		cfg.Storage.R2.RawBucket, cfg.Storage.R2.ProcessedBucket)
+	// 3. [Storage Provider (IoC: GCS vs Cloudflare R2)]
+	var storageProvider video.StorageProvider
+	var publicDomain string
 
-	// 4. [FFmpeg Transcoder: Native vs Docker via IoC]
+	if cfg.Storage.Provider == "gcs" || (cfg.Storage.Provider == "" && cfg.Storage.GCP.ProjectID != "") {
+		gcsAdapter, err := storage.NewGCSStorageAdapter(
+			ctx,
+			cfg.Storage.GCP.CredentialsFile,
+			cfg.Storage.GCP.ProjectID,
+			cfg.Storage.GCP.PublicDomain,
+		)
+		if err != nil {
+			log.Error("Failed to initialize Google Cloud Storage (GCS) Adapter: %v", err)
+			os.Exit(1)
+		}
+		defer gcsAdapter.Close()
+		storageProvider = gcsAdapter
+		publicDomain = cfg.Storage.GCP.PublicDomain
+		log.Info("Google Cloud Storage (GCS) Adapter connected (Raw: %s, Processed: %s)",
+			cfg.Storage.GCP.RawBucket, cfg.Storage.GCP.ProcessedBucket)
+	} else {
+		r2Adapter, err := storage.NewR2Adapter(
+			ctx,
+			cfg.Storage.R2.AccountID,
+			cfg.Storage.R2.AccessKeyID,
+			cfg.Storage.R2.SecretAccessKey,
+			cfg.Storage.R2.PublicDomain,
+		)
+		if err != nil {
+			log.Error("Failed to initialize Cloudflare R2 Adapter: %v", err)
+			os.Exit(1)
+		}
+		storageProvider = r2Adapter
+		publicDomain = cfg.Storage.R2.PublicDomain
+		log.Info("Cloudflare R2 Adapter connected (Raw: %s, Processed: %s)",
+			cfg.Storage.R2.RawBucket, cfg.Storage.R2.ProcessedBucket)
+	}
+
+	// 4. [Transcoder Media Engine: Serverless GCP vs Docker vs Native]
 	var ffmpegTranscoder video.Transcoder
-	if cfg.Transcoder.Type == "native" {
+	var gcpTranscoder *transcoder.GCPCloudTranscoder
+
+	if cfg.Transcoder.Type == "gcp" {
+		var err error
+		gcpTranscoder, err = transcoder.NewGCPCloudTranscoder(
+			ctx,
+			cfg.Storage.GCP.CredentialsFile,
+			cfg.Storage.GCP.ProjectID,
+			cfg.Storage.GCP.Region,
+			cfg.Storage.GCP.PubSubTopic,
+		)
+		if err != nil {
+			log.Error("Failed to initialize Serverless GCP Cloud Transcoder: %v", err)
+			os.Exit(1)
+		}
+		log.Info("Serverless GCP Cloud Transcoder initialized (Project: %s, Region: %s, PubSub: %s)",
+			cfg.Storage.GCP.ProjectID, cfg.Storage.GCP.Region, cfg.Storage.GCP.PubSubTopic)
+	} else if cfg.Transcoder.Type == "native" {
 		ffmpegTranscoder = transcoder.NewNativeFFmpegTranscoder(
 			cfg.Transcoder.FFmpegPath,
 			cfg.Transcoder.FFprobePath,
@@ -141,14 +181,17 @@ func main() {
 		pgRepo,
 		pgRepo,
 		pgRepo,
-		r2Adapter,
+		storageProvider,
 		ffmpegTranscoder,
 		rabbitMQAdapter,
 		scratchDir,
-		cfg.Storage.R2.PublicDomain,
+		publicDomain,
 		"", // Auto hostname
 		log,
 	)
+	if gcpTranscoder != nil {
+		workerService.SetCloudTranscoder(gcpTranscoder)
+	}
 
 	// 7. [Graceful Shutdown Signal Handling]
 	sigChan := make(chan os.Signal, 1)

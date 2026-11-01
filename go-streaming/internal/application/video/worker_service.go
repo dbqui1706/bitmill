@@ -13,6 +13,11 @@ import (
 	"quidb.dev/go-streaming/pkg/metrics"
 )
 
+// CloudTranscodeDispatcher defines the contract for submitting serverless transcoding jobs (e.g. GCP Transcoder API)
+type CloudTranscodeDispatcher interface {
+	SubmitJob(ctx context.Context, videoID, sourceBucket, sourceKey, targetBucket, targetPrefix string) (jobName string, err error)
+}
+
 // WorkerService orchestrates the asynchronous video transcoding pipeline
 type WorkerService struct {
 	videoRepo       video.Repository
@@ -20,6 +25,7 @@ type WorkerService struct {
 	renditionRepo   video.RenditionRepository
 	storageProvider video.StorageProvider
 	transcoder      video.Transcoder
+	cloudTranscoder CloudTranscodeDispatcher
 	jobQueue        video.JobQueue
 	scratchBaseDir  string
 	publicDomain    string
@@ -65,6 +71,10 @@ func NewWorkerService(
 	}
 }
 
+func (s *WorkerService) SetCloudTranscoder(ct CloudTranscodeDispatcher) {
+	s.cloudTranscoder = ct
+}
+
 // StartConsumer begins consuming transcoding messages from RabbitMQ until context is cancelled
 func (s *WorkerService) StartConsumer(ctx context.Context) error {
 	s.log.Info("Starting Transcoding Worker Daemon (WorkerID=%s, ScratchDir=%s)", s.workerID, s.scratchBaseDir)
@@ -95,7 +105,23 @@ func (s *WorkerService) ProcessJob(ctx context.Context, msg *video.TranscodeJobM
 		_ = s.jobRepo.MarkJobProcessing(ctx, msg.JobID, s.workerID)
 	}
 
-	// 2. Setup Isolated Scratch Directory
+	// 1.1 Serverless Cloud Transcoder Delegation (Zero CPU VPS Processing)
+	if s.cloudTranscoder != nil {
+		s.log.Info("Delegating video transcoding to Serverless Cloud Transcoder for VideoID=%s...", msg.VideoID)
+		jobName, err := s.cloudTranscoder.SubmitJob(ctx, msg.VideoID, msg.SourceBucket, msg.SourceKey, msg.TargetBucket, msg.TargetPrefix)
+		if err != nil {
+			s.log.Error("Failed to submit Serverless Cloud Transcoder job for VideoID=%s: %v", msg.VideoID, err)
+			_ = s.videoRepo.MarkFailed(ctx, msg.VideoID)
+			if s.jobRepo != nil && msg.JobID != "" {
+				_ = s.jobRepo.MarkJobFailed(ctx, msg.JobID, err.Error())
+			}
+			return fmt.Errorf("cloud transcoder submission failed: %w", err)
+		}
+		s.log.Info("Serverless Transcoder Job scheduled successfully: %s. Awaiting Cloud Pub/Sub completion event.", jobName)
+		return nil
+	}
+
+	// 2. Setup Isolated Scratch Directory (Docker / Native Local Fallback)
 	jobScratchDir := filepath.Join(s.scratchBaseDir, msg.JobID)
 	if err := os.MkdirAll(jobScratchDir, 0755); err != nil {
 		s.log.Error("Failed to create scratch directory %s: %v", jobScratchDir, err)
