@@ -10,6 +10,7 @@ import (
 
 	transcoderAPI "google.golang.org/api/transcoder/v1"
 	"google.golang.org/api/option"
+	"quidb.dev/go-streaming/internal/domain/video"
 )
 
 // GCPCloudTranscoder handles serverless media encoding jobs via Google Cloud Transcoder API
@@ -100,11 +101,110 @@ func NewGCPCloudTranscoder(ctx context.Context, credentialsFile, projectID, regi
 }
 
 // SubmitJob creates and schedules an asynchronous serverless 4-rung ABR HLS transcoding job on Google Cloud
-func (g *GCPCloudTranscoder) SubmitJob(ctx context.Context, videoID, sourceBucket, sourceKey, targetBucket, targetPrefix string) (string, error) {
+func (g *GCPCloudTranscoder) SubmitJob(ctx context.Context, videoID, sourceBucket, sourceKey, targetBucket, targetPrefix string, hasAudio bool) (string, error) {
 	parent := fmt.Sprintf("projects/%s/locations/%s", g.projectID, g.region)
 
 	inputURI := fmt.Sprintf("gs://%s/%s", sourceBucket, strings.TrimPrefix(sourceKey, "/"))
 	outputURI := fmt.Sprintf("gs://%s/%s/", targetBucket, strings.Trim(targetPrefix, "/"))
+
+	elementaryStreams := []*transcoderAPI.ElementaryStream{
+		{
+			Key: "video_1080p",
+			VideoStream: &transcoderAPI.VideoStream{
+				H264: &transcoderAPI.H264CodecSettings{
+					HeightPixels: 1080,
+					WidthPixels:  1920,
+					BitrateBps:   4500000,
+					FrameRate:    30,
+					GopDuration:  "2s",
+					Profile:      "high",
+					Preset:       "veryfast",
+				},
+			},
+		},
+		{
+			Key: "video_720p",
+			VideoStream: &transcoderAPI.VideoStream{
+				H264: &transcoderAPI.H264CodecSettings{
+					HeightPixels: 720,
+					WidthPixels:  1280,
+					BitrateBps:   2500000,
+					FrameRate:    30,
+					GopDuration:  "2s",
+					Profile:      "main",
+					Preset:       "veryfast",
+				},
+			},
+		},
+		{
+			Key: "video_480p",
+			VideoStream: &transcoderAPI.VideoStream{
+				H264: &transcoderAPI.H264CodecSettings{
+					HeightPixels: 480,
+					WidthPixels:  854,
+					BitrateBps:   1000000,
+					FrameRate:    30,
+					GopDuration:  "2s",
+					Profile:      "main",
+					Preset:       "veryfast",
+				},
+			},
+		},
+		{
+			Key: "video_360p",
+			VideoStream: &transcoderAPI.VideoStream{
+				H264: &transcoderAPI.H264CodecSettings{
+					HeightPixels: 360,
+					WidthPixels:  640,
+					BitrateBps:   600000,
+					FrameRate:    30,
+					GopDuration:  "2s",
+					Profile:      "baseline",
+					Preset:       "veryfast",
+				},
+			},
+		},
+	}
+
+	if hasAudio {
+		elementaryStreams = append(elementaryStreams, &transcoderAPI.ElementaryStream{
+			Key: "audio_aac",
+			AudioStream: &transcoderAPI.AudioStream{
+				Codec:           "aac",
+				BitrateBps:      128000,
+				ChannelCount:    2,
+				SampleRateHertz: 48000,
+			},
+		})
+	}
+
+	ladderConfigs := []struct {
+		key      string
+		fileName string
+		vKey     string
+	}{
+		{"hls_1080p", "1080p.m3u8", "video_1080p"},
+		{"hls_720p", "720p.m3u8", "video_720p"},
+		{"hls_480p", "480p.m3u8", "video_480p"},
+		{"hls_360p", "360p.m3u8", "video_360p"},
+	}
+
+	muxStreams := make([]*transcoderAPI.MuxStream, 0, len(ladderConfigs))
+	for _, cfg := range ladderConfigs {
+		streams := []string{cfg.vKey}
+		if hasAudio {
+			streams = append(streams, "audio_aac")
+		}
+		muxStreams = append(muxStreams, &transcoderAPI.MuxStream{
+			Key:               cfg.key,
+			FileName:          cfg.fileName,
+			Container:         "ts",
+			ElementaryStreams: streams,
+			SegmentSettings: &transcoderAPI.SegmentSettings{
+				SegmentDuration: "2s",
+			},
+		})
+	}
 
 	job := &transcoderAPI.Job{
 		InputUri:  inputURI,
@@ -113,111 +213,8 @@ func (g *GCPCloudTranscoder) SubmitJob(ctx context.Context, videoID, sourceBucke
 			"video_id": videoID,
 		},
 		Config: &transcoderAPI.JobConfig{
-			ElementaryStreams: []*transcoderAPI.ElementaryStream{
-				{
-					Key: "video_1080p",
-					VideoStream: &transcoderAPI.VideoStream{
-						H264: &transcoderAPI.H264CodecSettings{
-							HeightPixels: 1080,
-							WidthPixels:  1920,
-							BitrateBps:   4500000,
-							FrameRate:    30,
-							GopDuration:  "2s",
-							Profile:      "high",
-							Preset:       "veryfast",
-						},
-					},
-				},
-				{
-					Key: "video_720p",
-					VideoStream: &transcoderAPI.VideoStream{
-						H264: &transcoderAPI.H264CodecSettings{
-							HeightPixels: 720,
-							WidthPixels:  1280,
-							BitrateBps:   2500000,
-							FrameRate:    30,
-							GopDuration:  "2s",
-							Profile:      "main",
-							Preset:       "veryfast",
-						},
-					},
-				},
-				{
-					Key: "video_480p",
-					VideoStream: &transcoderAPI.VideoStream{
-						H264: &transcoderAPI.H264CodecSettings{
-							HeightPixels: 480,
-							WidthPixels:  854,
-							BitrateBps:   1000000,
-							FrameRate:    30,
-							GopDuration:  "2s",
-							Profile:      "main",
-							Preset:       "veryfast",
-						},
-					},
-				},
-				{
-					Key: "video_360p",
-					VideoStream: &transcoderAPI.VideoStream{
-						H264: &transcoderAPI.H264CodecSettings{
-							HeightPixels: 360,
-							WidthPixels:  640,
-							BitrateBps:   600000,
-							FrameRate:    30,
-							GopDuration:  "2s",
-							Profile:      "baseline",
-							Preset:       "veryfast",
-						},
-					},
-				},
-				{
-					Key: "audio_aac",
-					AudioStream: &transcoderAPI.AudioStream{
-						Codec:           "aac",
-						BitrateBps:      128000,
-						ChannelCount:    2,
-						SampleRateHertz: 48000,
-					},
-				},
-			},
-			MuxStreams: []*transcoderAPI.MuxStream{
-				{
-					Key:               "hls_1080p",
-					FileName:          "1080p.m3u8",
-					Container:         "ts",
-					ElementaryStreams: []string{"video_1080p", "audio_aac"},
-					SegmentSettings: &transcoderAPI.SegmentSettings{
-						SegmentDuration: "2s",
-					},
-				},
-				{
-					Key:               "hls_720p",
-					FileName:          "720p.m3u8",
-					Container:         "ts",
-					ElementaryStreams: []string{"video_720p", "audio_aac"},
-					SegmentSettings: &transcoderAPI.SegmentSettings{
-						SegmentDuration: "2s",
-					},
-				},
-				{
-					Key:               "hls_480p",
-					FileName:          "480p.m3u8",
-					Container:         "ts",
-					ElementaryStreams: []string{"video_480p", "audio_aac"},
-					SegmentSettings: &transcoderAPI.SegmentSettings{
-						SegmentDuration: "2s",
-					},
-				},
-				{
-					Key:               "hls_360p",
-					FileName:          "360p.m3u8",
-					Container:         "ts",
-					ElementaryStreams: []string{"video_360p", "audio_aac"},
-					SegmentSettings: &transcoderAPI.SegmentSettings{
-						SegmentDuration: "2s",
-					},
-				},
-			},
+			ElementaryStreams: elementaryStreams,
+			MuxStreams:        muxStreams,
 			Manifests: []*transcoderAPI.Manifest{
 				{
 					FileName:   "master.m3u8",
@@ -259,4 +256,20 @@ func (g *GCPCloudTranscoder) SubmitJob(ctx context.Context, videoID, sourceBucke
 func (g *GCPCloudTranscoder) GetJob(ctx context.Context, jobName string) (*transcoderAPI.Job, error) {
 	call := g.service.Projects.Locations.Jobs.Get(jobName)
 	return call.Context(ctx).Do()
+}
+
+// GetJobState retrieves the normalized state and error details of a cloud transcoding job
+func (g *GCPCloudTranscoder) GetJobState(ctx context.Context, jobName string) (video.CloudJobState, error) {
+	job, err := g.GetJob(ctx, jobName)
+	if err != nil {
+		return video.CloudJobState{}, err
+	}
+	errMsg := ""
+	if job.Error != nil {
+		errMsg = job.Error.Message
+	}
+	return video.CloudJobState{
+		State:        job.State,
+		ErrorMessage: errMsg,
+	}, nil
 }

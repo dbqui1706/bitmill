@@ -1,8 +1,11 @@
 package video
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,7 +18,8 @@ import (
 
 // CloudTranscodeDispatcher defines the contract for submitting serverless transcoding jobs (e.g. GCP Transcoder API)
 type CloudTranscodeDispatcher interface {
-	SubmitJob(ctx context.Context, videoID, sourceBucket, sourceKey, targetBucket, targetPrefix string) (jobName string, err error)
+	SubmitJob(ctx context.Context, videoID, sourceBucket, sourceKey, targetBucket, targetPrefix string, hasAudio bool) (jobName string, err error)
+	GetJobState(ctx context.Context, jobName string) (video.CloudJobState, error)
 }
 
 // WorkerService orchestrates the asynchronous video transcoding pipeline
@@ -108,7 +112,11 @@ func (s *WorkerService) ProcessJob(ctx context.Context, msg *video.TranscodeJobM
 	// 1.1 Serverless Cloud Transcoder Delegation (Zero CPU VPS Processing)
 	if s.cloudTranscoder != nil {
 		s.log.Info("Delegating video transcoding to Serverless Cloud Transcoder for VideoID=%s...", msg.VideoID)
-		jobName, err := s.cloudTranscoder.SubmitJob(ctx, msg.VideoID, msg.SourceBucket, msg.SourceKey, msg.TargetBucket, msg.TargetPrefix)
+
+		hasAudio := s.detectAudio(ctx, msg.SourceBucket, msg.SourceKey)
+		s.log.Info("Audio stream inspection for VideoID=%s: hasAudio=%v", msg.VideoID, hasAudio)
+
+		jobName, err := s.cloudTranscoder.SubmitJob(ctx, msg.VideoID, msg.SourceBucket, msg.SourceKey, msg.TargetBucket, msg.TargetPrefix, hasAudio)
 		if err != nil {
 			s.log.Error("Failed to submit Serverless Cloud Transcoder job for VideoID=%s: %v", msg.VideoID, err)
 			_ = s.videoRepo.MarkFailed(ctx, msg.VideoID)
@@ -117,7 +125,10 @@ func (s *WorkerService) ProcessJob(ctx context.Context, msg *video.TranscodeJobM
 			}
 			return fmt.Errorf("cloud transcoder submission failed: %w", err)
 		}
-		s.log.Info("Serverless Transcoder Job scheduled successfully: %s. Awaiting Cloud Pub/Sub completion event.", jobName)
+		s.log.Info("Serverless Transcoder Job scheduled successfully: %s", jobName)
+
+		// Start background job watcher for local environments or real-time fallback
+		go s.monitorCloudTranscoderJob(jobName, msg.VideoID, msg.TargetBucket, msg.TargetPrefix)
 		return nil
 	}
 
@@ -231,4 +242,132 @@ func (s *WorkerService) ProcessJob(ctx context.Context, msg *video.TranscodeJobM
 
 	s.log.Info("Transcoding pipeline completed successfully for VideoID=%s! Master URL: %s", msg.VideoID, masterURL)
 	return nil
+}
+
+// detectAudio probes the source media container via partial range request to check for audio tracks
+func (s *WorkerService) detectAudio(ctx context.Context, bucket, key string) bool {
+	if s.storageProvider == nil {
+		return true
+	}
+
+	dlURL, err := s.storageProvider.GetDownloadURL(ctx, bucket, key, 5*time.Minute)
+	if err != nil {
+		s.log.Warn("Failed to obtain download URL for audio inspection on %s/%s: %v", bucket, key, err)
+		return true
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, dlURL, nil)
+	if err != nil {
+		return true
+	}
+	req.Header.Set("Range", "bytes=0-524288")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return true
+	}
+	defer resp.Body.Close()
+
+	buf, err := io.ReadAll(resp.Body)
+	if err != nil || len(buf) == 0 {
+		return true
+	}
+
+	if bytes.Contains(buf, []byte("soun")) {
+		return true
+	}
+
+	if bytes.Contains(buf, []byte("moov")) && bytes.Contains(buf, []byte("vide")) {
+		s.log.Info("Audio Detection: detected silent/video-only container (no 'soun' track found in moov atom)")
+		return false
+	}
+
+	return true
+}
+
+func (s *WorkerService) monitorCloudTranscoderJob(jobName, videoID, targetBucket, targetPrefix string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			s.log.Warn("Background watcher timed out for GCP job %s (VideoID=%s)", jobName, videoID)
+			return
+		case <-ticker.C:
+			state, err := s.cloudTranscoder.GetJobState(ctx, jobName)
+			if err != nil {
+				s.log.Warn("Failed to poll GCP job state for %s: %v", jobName, err)
+				continue
+			}
+
+			switch state.State {
+			case "SUCCEEDED":
+				s.log.Info("🎉 GCP Transcoder Job %s SUCCEEDED for VideoID=%s! Finalizing video and renditions...", jobName, videoID)
+				s.finalizeVideoFromGCP(ctx, videoID, targetBucket, targetPrefix)
+				return
+			case "FAILED":
+				s.log.Error("❌ GCP Transcoder Job %s FAILED for VideoID=%s: %s", jobName, videoID, state.ErrorMessage)
+				_ = s.videoRepo.MarkFailed(ctx, videoID)
+				if s.jobRepo != nil {
+					_ = s.jobRepo.MarkJobFailed(ctx, videoID, state.ErrorMessage)
+				}
+				return
+			}
+		}
+	}
+}
+
+func (s *WorkerService) finalizeVideoFromGCP(ctx context.Context, videoID, targetBucket, targetPrefix string) {
+	prefix := strings.Trim(targetPrefix, "/")
+	masterURL := fmt.Sprintf("https://storage.googleapis.com/%s/%s/master.m3u8", targetBucket, prefix)
+	thumbnailURL := fmt.Sprintf("https://storage.googleapis.com/%s/%s/thumbnail0000000000.jpeg", targetBucket, prefix)
+
+	renditions := []video.Rendition{
+		{
+			ResolutionName:   "1080p",
+			Width:            1920,
+			Height:           1080,
+			VideoBitrateKbps: 4500,
+			AudioBitrateKbps: 128,
+			PlaylistPath:     fmt.Sprintf("%s/1080p.m3u8", prefix),
+			Status:           "READY",
+		},
+		{
+			ResolutionName:   "720p",
+			Width:            1280,
+			Height:           720,
+			VideoBitrateKbps: 2500,
+			AudioBitrateKbps: 128,
+			PlaylistPath:     fmt.Sprintf("%s/720p.m3u8", prefix),
+			Status:           "READY",
+		},
+		{
+			ResolutionName:   "480p",
+			Width:            854,
+			Height:           480,
+			VideoBitrateKbps: 1000,
+			AudioBitrateKbps: 128,
+			PlaylistPath:     fmt.Sprintf("%s/480p.m3u8", prefix),
+			Status:           "READY",
+		},
+		{
+			ResolutionName:   "360p",
+			Width:            640,
+			Height:           360,
+			VideoBitrateKbps: 600,
+			AudioBitrateKbps: 128,
+			PlaylistPath:     fmt.Sprintf("%s/360p.m3u8", prefix),
+			Status:           "READY",
+		},
+	}
+
+	if s.renditionRepo != nil {
+		_ = s.renditionRepo.SaveRenditions(ctx, videoID, renditions)
+	}
+	_ = s.videoRepo.MarkReady(ctx, videoID, masterURL, thumbnailURL, 0)
+	s.log.Info("Video %s is now READY on GCS! Master Playlist: %s", videoID, masterURL)
 }

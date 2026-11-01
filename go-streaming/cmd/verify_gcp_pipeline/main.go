@@ -101,7 +101,7 @@ func main() {
 	videoID := fmt.Sprintf("live-test-%d", time.Now().Unix())
 	targetPrefix := fmt.Sprintf("videos/%s/hls", videoID)
 	log.Info("Submitting 4-rung ABR Transcoding Job to GCP for VideoID [%s]...", videoID)
-	jobName, err := gcpTranscoder.SubmitJob(ctx, videoID, rawBucket, rawKey, processedBucket, targetPrefix)
+	jobName, err := gcpTranscoder.SubmitJob(ctx, videoID, rawBucket, rawKey, processedBucket, targetPrefix, true)
 	if err != nil {
 		log.Error("Failed to submit GCP Transcoder job: %v", err)
 		os.Exit(1)

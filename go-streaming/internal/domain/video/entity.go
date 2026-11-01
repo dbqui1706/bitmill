@@ -216,3 +216,9 @@ type ABRConfig struct {
 	GOPSize         int
 	SegmentDuration int // seconds (standard: 2)
 }
+
+// CloudJobState represents the normalized execution status of a cloud transcoding job
+type CloudJobState struct {
+	State        string // "SUCCEEDED", "FAILED", "RUNNING", "PENDING"
+	ErrorMessage string
+}
