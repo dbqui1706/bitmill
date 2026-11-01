@@ -56,7 +56,7 @@ services:
     networks:
       - bitmill-internal
     env_file:
-      - ../.env
+      - ${ENV_FILE:-../.env.prod}
     environment:
       - APP_ENV=production
       - GIN_MODE=release
@@ -115,7 +115,7 @@ services:
     networks:
       - bitmill-internal
     env_file:
-      - ../.env
+      - ${ENV_FILE:-../.env.prod}
     environment:
       - APP_ENV=production
       - GIN_MODE=release
@@ -175,7 +175,7 @@ services:
     networks:
       - bitmill-internal
     env_file:
-      - ../.env
+      - ${ENV_FILE:-../.env.prod}
     environment:
       - APP_ENV=production
       - DATABASE_HOST=postgres
@@ -229,7 +229,7 @@ services:
     networks:
       - bitmill-internal
     env_file:
-      - ../.env
+      - ${ENV_FILE:-../.env.prod}
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-bitmill_media}
       POSTGRES_USER: ${POSTGRES_USER:-bitmill_user}
@@ -261,7 +261,7 @@ services:
     networks:
       - bitmill-internal
     env_file:
-      - ../.env
+      - ${ENV_FILE:-../.env.prod}
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-bitmill_mq}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-bitmill_mq_password}

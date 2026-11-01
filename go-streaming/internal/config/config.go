@@ -86,8 +86,32 @@ type Config struct {
 
 // LoadConfig loads configuration from .env files, config.yaml, and environment variables
 func LoadConfig(customPaths ...string) (*Config, error) {
-	// 1. Try loading .env from multiple candidate locations
-	_ = godotenv.Load(".env", "../.env", "../../.env")
+	// 1. Try loading environment-specific candidates first (.env.local, .env.prod, .env)
+	appEnv := os.Getenv("APP_ENV")
+	if appEnv == "" {
+		appEnv = "local"
+	}
+
+	envCandidates := []string{
+		".env." + appEnv,
+		"../.env." + appEnv,
+		"../../.env." + appEnv,
+		".env.local",
+		"../.env.local",
+		"../../.env.local",
+		".env.prod",
+		"../.env.prod",
+		"../../.env.prod",
+		".env",
+		"../.env",
+		"../../.env",
+	}
+
+	for _, candidate := range envCandidates {
+		if _, err := os.Stat(candidate); err == nil {
+			_ = godotenv.Load(candidate)
+		}
+	}
 
 	v := viper.New()
 	v.SetConfigName("config")

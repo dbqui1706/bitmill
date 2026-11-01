@@ -4,7 +4,8 @@
 .PHONY: prod-help prod-status prod-pull prod-up prod-down prod-restart prod-logs prod-migrate-status prod-migrate-up prod-smoke-test
 
 COMPOSE_PROD_FILE ?= environment/docker-compose.prod.yml
-COMPOSE_PROD      := docker compose --env-file .env -f $(COMPOSE_PROD_FILE)
+PROD_ENV_FILE     ?= $(shell if [ -f .env.prod ]; then echo ".env.prod"; else echo ".env"; fi)
+COMPOSE_PROD      := docker compose --env-file $(PROD_ENV_FILE) -f $(COMPOSE_PROD_FILE)
 
 # Optional service parameter for logs (e.g., make prod-logs SERVICE=worker)
 SERVICE ?=

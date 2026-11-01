@@ -1,6 +1,8 @@
 # Environment variables (Sensitive secrets)
 .env
 .env.local
+.env.prod
+.env.production
 .env.*.local
 
 # OS generated files
