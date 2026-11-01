@@ -127,8 +127,8 @@ func (s *WorkerService) ProcessJob(ctx context.Context, msg *video.TranscodeJobM
 		}
 		s.log.Info("Serverless Transcoder Job scheduled successfully: %s", jobName)
 
-		// Start background job watcher for local environments or real-time fallback
-		go s.monitorCloudTranscoderJob(jobName, msg.VideoID, msg.TargetBucket, msg.TargetPrefix)
+		// Start background job watcher with self-healing audio fallback
+		go s.monitorCloudTranscoderJob(jobName, msg.VideoID, msg.SourceBucket, msg.SourceKey, msg.TargetBucket, msg.TargetPrefix)
 		return nil
 	}
 
@@ -256,41 +256,66 @@ func (s *WorkerService) detectAudio(ctx context.Context, bucket, key string) boo
 		return true
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, dlURL, nil)
-	if err != nil {
-		return true
-	}
-	req.Header.Set("Range", "bytes=0-524288")
+	fetchRange := func(rangeHeader string) []byte {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, dlURL, nil)
+		if err != nil {
+			return nil
+		}
+		req.Header.Set("Range", rangeHeader)
 
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return true
-	}
-	defer resp.Body.Close()
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return nil
+		}
+		defer resp.Body.Close()
 
-	buf, err := io.ReadAll(resp.Body)
-	if err != nil || len(buf) == 0 {
-		return true
-	}
-
-	if bytes.Contains(buf, []byte("soun")) {
-		return true
+		buf, _ := io.ReadAll(resp.Body)
+		return buf
 	}
 
-	if bytes.Contains(buf, []byte("moov")) && bytes.Contains(buf, []byte("vide")) {
-		s.log.Info("Audio Detection: detected silent/video-only container (no 'soun' track found in moov atom)")
-		return false
+	// 1. Check head of file (512KB) for faststart/web-optimized moov atom
+	headBuf := fetchRange("bytes=0-524288")
+	if len(headBuf) > 0 {
+		if bytes.Contains(headBuf, []byte("soun")) {
+			return true
+		}
+		if bytes.Contains(headBuf, []byte("moov")) && bytes.Contains(headBuf, []byte("vide")) {
+			s.log.Info("Audio Detection: detected silent/video-only container (no 'soun' track in head moov atom)")
+			return false
+		}
+	}
+
+	// 2. Check tail of file (512KB) for standard non-faststart moov atom placed after mdat
+	fileSize, err := s.storageProvider.GetObjectSize(ctx, bucket, key)
+	if err == nil && fileSize > 0 {
+		rangeStart := int64(0)
+		if fileSize > 524288 {
+			rangeStart = fileSize - 524288
+		}
+		tailRange := fmt.Sprintf("bytes=%d-%d", rangeStart, fileSize-1)
+		tailBuf := fetchRange(tailRange)
+		if len(tailBuf) > 0 {
+			if bytes.Contains(tailBuf, []byte("soun")) {
+				return true
+			}
+			if bytes.Contains(tailBuf, []byte("moov")) && bytes.Contains(tailBuf, []byte("vide")) {
+				s.log.Info("Audio Detection: detected silent/video-only container (no 'soun' track in tail moov atom)")
+				return false
+			}
+		}
 	}
 
 	return true
 }
 
-func (s *WorkerService) monitorCloudTranscoderJob(jobName, videoID, targetBucket, targetPrefix string) {
+func (s *WorkerService) monitorCloudTranscoderJob(jobName, videoID, sourceBucket, sourceKey, targetBucket, targetPrefix string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
+
+	hasAutoRetriedSilent := false
 
 	for {
 		select {
@@ -310,6 +335,19 @@ func (s *WorkerService) monitorCloudTranscoderJob(jobName, videoID, targetBucket
 				s.finalizeVideoFromGCP(ctx, videoID, targetBucket, targetPrefix)
 				return
 			case "FAILED":
+				// Self-Healing: If GCP Transcoder failed due to AudioMissing on a silent video, auto-resubmit with hasAudio=false!
+				lowerErr := strings.ToLower(state.ErrorMessage)
+				if !hasAutoRetriedSilent && (strings.Contains(lowerErr, "audio") || strings.Contains(lowerErr, "audiomissing")) {
+					hasAutoRetriedSilent = true
+					s.log.Warn("⚠️ GCP Transcoder reported AudioMissing error for VideoID=%s. Auto-healing: re-submitting with hasAudio=false...", videoID)
+					retryJobName, err := s.cloudTranscoder.SubmitJob(ctx, videoID, sourceBucket, sourceKey, targetBucket, targetPrefix, false)
+					if err == nil {
+						s.log.Info("🔄 Successfully re-submitted auto-healed silent video job: %s. Resuming monitoring...", retryJobName)
+						jobName = retryJobName
+						continue
+					}
+				}
+
 				s.log.Error("❌ GCP Transcoder Job %s FAILED for VideoID=%s: %s", jobName, videoID, state.ErrorMessage)
 				_ = s.videoRepo.MarkFailed(ctx, videoID)
 				if s.jobRepo != nil {
