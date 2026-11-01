@@ -4,14 +4,7 @@
       "https://devlungtung.htcwood.com"
     ],
     "method": ["GET", "HEAD", "OPTIONS"],
-    "responseHeader": [
-      "Content-Type",
-      "Range",
-      "Origin",
-      "Accept-Encoding",
-      "Content-Length",
-      "ETag"
-    ],
+    "responseHeader": ["*"],
     "maxAgeSeconds": 3600
   }
 ]
