@@ -67,6 +67,15 @@ cleanup_lock() {
 }
 trap cleanup_lock EXIT INT TERM
 
+# Ensure Environment Parity (.env and .env.prod)
+if [ ! -f "${ROOT_DIR}/.env.prod" ] && [ -f "${ROOT_DIR}/.env" ]; then
+    echo -e "${YELLOW}ℹ️  Notice: .env.prod not found; linking from existing .env...${RESET}"
+    ln -sf "${ROOT_DIR}/.env" "${ROOT_DIR}/.env.prod"
+elif [ ! -f "${ROOT_DIR}/.env" ] && [ -f "${ROOT_DIR}/.env.prod" ]; then
+    echo -e "${YELLOW}ℹ️  Notice: .env not found; linking from existing .env.prod...${RESET}"
+    ln -sf "${ROOT_DIR}/.env.prod" "${ROOT_DIR}/.env"
+fi
+
 # -----------------------------------------------------------------------------
 # STEP 2: GHCR Authentication & Pre-Flight Image Pull Assertion
 # -----------------------------------------------------------------------------
