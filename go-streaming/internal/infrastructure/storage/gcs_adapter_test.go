@@ -49,3 +49,16 @@ func TestGCSStorageAdapter_GeneratePresignedPutURL(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "https://storage.googleapis.com/bitmill-processed-videos/videos/123/hls/master.m3u8", dlURL)
 }
+
+func TestGCSStorageAdapter_InMemoryCredentialsResolution(t *testing.T) {
+	mockSAJSON := `{"project_id":"test-proj","client_email":"test@test-proj.iam.gserviceaccount.com","private_key":"-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC7\n-----END PRIVATE KEY-----\n"}`
+	t.Setenv("GCP_CREDENTIALS_JSON", mockSAJSON)
+
+	credInfo, err := loadGCPCredentials("")
+	require.NoError(t, err)
+	require.NotNil(t, credInfo)
+	assert.Equal(t, "test-proj", credInfo.projectID)
+	assert.Equal(t, "test@test-proj.iam.gserviceaccount.com", credInfo.clientEmail)
+	assert.Contains(t, string(credInfo.privateKeyBytes), "BEGIN PRIVATE KEY")
+	assert.NotNil(t, credInfo.clientOption)
+}

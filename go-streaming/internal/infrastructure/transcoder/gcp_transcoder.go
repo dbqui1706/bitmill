@@ -2,6 +2,7 @@ package transcoder
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -35,12 +36,50 @@ func resolveCredentialsPath(path string) string {
 	return path
 }
 
+func loadTranscoderCredentials(credentialsFile string) (option.ClientOption, string, error) {
+	// 1. Priority 1: In-Memory JSON from Environment Variable (Zero File on Disk)
+	if envJSON := os.Getenv("GCP_CREDENTIALS_JSON"); strings.TrimSpace(envJSON) != "" {
+		var sa struct {
+			ProjectID string `json:"project_id"`
+		}
+		_ = json.Unmarshal([]byte(envJSON), &sa)
+		return option.WithCredentialsJSON([]byte(envJSON)), sa.ProjectID, nil
+	}
+
+	// 2. Priority 2: Standard Google Cloud Environment Variable or Config Path
+	targetPath := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
+	if targetPath == "" {
+		targetPath = credentialsFile
+	}
+
+	if targetPath != "" {
+		resolvedPath := resolveCredentialsPath(targetPath)
+		if data, err := os.ReadFile(resolvedPath); err == nil {
+			var sa struct {
+				ProjectID string `json:"project_id"`
+			}
+			_ = json.Unmarshal(data, &sa)
+			return option.WithCredentialsFile(resolvedPath), sa.ProjectID, nil
+		}
+	}
+
+	// 3. Priority 3: Fallback to ADC
+	return nil, "", nil
+}
+
 // NewGCPCloudTranscoder initializes the Google Cloud Transcoder API client
 func NewGCPCloudTranscoder(ctx context.Context, credentialsFile, projectID, region, pubsubTopic string) (*GCPCloudTranscoder, error) {
 	var opts []option.ClientOption
-	resolvedCreds := resolveCredentialsPath(credentialsFile)
-	if resolvedCreds != "" {
-		opts = append(opts, option.WithCredentialsFile(resolvedCreds))
+
+	credOpt, credProject, err := loadTranscoderCredentials(credentialsFile)
+	if err != nil {
+		return nil, err
+	}
+	if credOpt != nil {
+		opts = append(opts, credOpt)
+		if projectID == "" {
+			projectID = credProject
+		}
 	}
 
 	service, err := transcoderAPI.NewService(ctx, opts...)
