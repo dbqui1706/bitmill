@@ -36,6 +36,22 @@ type serviceAccountFile struct {
 	PrivateKey  string `json:"private_key"`
 }
 
+func resolveCredentialsPath(path string) string {
+	if path == "" {
+		return ""
+	}
+	if _, err := os.Stat(path); err == nil {
+		return path
+	}
+	if !filepath.IsAbs(path) {
+		fallback := filepath.Join("..", path)
+		if _, err := os.Stat(fallback); err == nil {
+			return fallback
+		}
+	}
+	return path
+}
+
 // NewGCSStorageAdapter initializes a Google Cloud Storage client with Service Account credentials
 func NewGCSStorageAdapter(ctx context.Context, credentialsFile, projectID, publicDomain string) (*GCSStorageAdapter, error) {
 	var opts []option.ClientOption
@@ -43,8 +59,9 @@ func NewGCSStorageAdapter(ctx context.Context, credentialsFile, projectID, publi
 	var clientEmail string
 	var privateKeyBytes []byte
 
-	if credentialsFile != "" {
-		data, err := os.ReadFile(credentialsFile)
+	resolvedCreds := resolveCredentialsPath(credentialsFile)
+	if resolvedCreds != "" {
+		data, err := os.ReadFile(resolvedCreds)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read GCP credentials file at %s: %w", credentialsFile, err)
 		}
@@ -60,7 +77,7 @@ func NewGCSStorageAdapter(ctx context.Context, credentialsFile, projectID, publi
 			projectID = sa.ProjectID
 		}
 
-		opts = append(opts, option.WithCredentialsFile(credentialsFile))
+		opts = append(opts, option.WithCredentialsFile(resolvedCreds))
 	}
 
 	client, err := storage.NewClient(ctx, opts...)

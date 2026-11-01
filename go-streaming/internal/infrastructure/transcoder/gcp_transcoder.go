@@ -3,6 +3,8 @@ package transcoder
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	transcoderAPI "google.golang.org/api/transcoder/v1"
@@ -17,11 +19,28 @@ type GCPCloudTranscoder struct {
 	pubsubTopic string
 }
 
+func resolveCredentialsPath(path string) string {
+	if path == "" {
+		return ""
+	}
+	if _, err := os.Stat(path); err == nil {
+		return path
+	}
+	if !filepath.IsAbs(path) {
+		fallback := filepath.Join("..", path)
+		if _, err := os.Stat(fallback); err == nil {
+			return fallback
+		}
+	}
+	return path
+}
+
 // NewGCPCloudTranscoder initializes the Google Cloud Transcoder API client
 func NewGCPCloudTranscoder(ctx context.Context, credentialsFile, projectID, region, pubsubTopic string) (*GCPCloudTranscoder, error) {
 	var opts []option.ClientOption
-	if credentialsFile != "" {
-		opts = append(opts, option.WithCredentialsFile(credentialsFile))
+	resolvedCreds := resolveCredentialsPath(credentialsFile)
+	if resolvedCreds != "" {
+		opts = append(opts, option.WithCredentialsFile(resolvedCreds))
 	}
 
 	service, err := transcoderAPI.NewService(ctx, opts...)
